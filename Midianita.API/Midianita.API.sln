@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36511.14 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Midianita.API", "Midianita.API.csproj", "{D1269AC8-80B6-401F-A1EF-2526DEE0E886}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D1269AC8-80B6-401F-A1EF-2526DEE0E886}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1269AC8-80B6-401F-A1EF-2526DEE0E886}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1269AC8-80B6-401F-A1EF-2526DEE0E886}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1269AC8-80B6-401F-A1EF-2526DEE0E886}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6F97F06C-3894-4311-8953-BFE0C52E0DD6}
+	EndGlobalSection
+EndGlobal

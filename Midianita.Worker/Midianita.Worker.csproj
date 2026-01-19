@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Midianita.Worker-7e045437-02ba-42aa-b8c1-6b216447e44a</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.10.8" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.20" />
+    <PackageReference Include="AWSSDK.SQS" Version="4.0.2.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Midianita.Infrastructure\Midianita.Infrastructure.csproj" />
+    <ProjectReference Include="..\Midianita.Core\Midianita.Core.csproj" />
+  </ItemGroup>
+</Project>
