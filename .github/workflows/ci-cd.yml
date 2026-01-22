@@ -1,0 +1,131 @@
+name: Midianita CI/CD Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  SOLUTION_PATH: "./Midianita.sln"
+  IAC_PROJECT_PATH: "./Midianita.Infrastructure.IaC"
+  LAMBDA_PUBLISH_DIR: "./lambda-publish" # Pasta temporária para os binários
+
+jobs:
+  # =========================================================
+  # JOB 1: BUILD, TEST & PUBLISH
+  # =========================================================
+  build_and_test:  # CORREÇÃO: Nome corrigido (era buind)
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps: 
+      # 1. Checkout
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Setup .NET
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      
+      # 3. Cache
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      # 4. Restore
+      - name: Restore Dependencies
+        run: dotnet restore ${{ env.SOLUTION_PATH }}
+
+      # 5. Build
+      - name: Build Solution (Release)
+        run: dotnet build ${{ env.SOLUTION_PATH }} --configuration Release --no-restore
+
+      # 6. Testes
+      - name: Run Unit Tests
+        run: dotnet test ${{ env.SOLUTION_PATH }} --configuration Release --no-build --verbosity normal
+
+      # 7. Security Audit
+      - name: Security Audit
+        run: |
+          dotnet list ${{ env.SOLUTION_PATH }} package --vulnerable --include-transitive > security_report.txt
+          cat security_report.txt
+          if grep -q "has the following vulnerable" security_report.txt; then
+            echo "🚨 CRITICAL: Vulnerabilities Detected! Blocking Deploy."
+            exit 1
+          fi
+
+      # 8. NOVO PASSO: Publish (Gerar binários finais para o Lambda)
+      # Precisamos gerar os arquivos finais em uma pasta específica para enviar pro deploy
+      - name: Publish Lambda Artifacts
+        run: dotnet publish ${{ env.SOLUTION_PATH }} -c Release -o ${{ env.LAMBDA_PUBLISH_DIR }} --no-build
+
+      # 9. NOVO PASSO: Upload Artifact
+      # Envia a pasta de publish para o GitHub, para o próximo job baixar
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-build
+          path: ${{ env.LAMBDA_PUBLISH_DIR }}
+          if-no-files-found: error
+
+  # =========================================================
+  # JOB 2: DEPLOY (CDK)
+  # =========================================================
+  deploy:
+    name: Deploy to AWS
+    needs: build_and_test # Espera o job acima terminar
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Baixa os arquivos que o Job 1 criou
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-build
+          path: ${{ env.LAMBDA_PUBLISH_DIR }}
+
+      - name: Setup Node.js (for CDK)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      # Necessário pois o CDK pode precisar buildar algo ou ler configs
+      - name: Setup .NET for CDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: CDK Deploy
+        env:
+          # Define onde o código C# da Lambda está para o CDK encontrar
+          LAMBDA_BINARY_PATH: ../${{ env.LAMBDA_PUBLISH_DIR }}
+        run: |
+          cd ${{ env.IAC_PROJECT_PATH }}
+          cdk deploy --require-approval never
