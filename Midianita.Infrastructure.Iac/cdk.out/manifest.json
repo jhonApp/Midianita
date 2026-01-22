@@ -1,0 +1,159 @@
+{
+  "version": "34.0.0",
+  "artifacts": {
+    "MidianitaInfrastructureIaCStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "MidianitaInfrastructureIaCStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "MidianitaInfrastructureIaCStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://633574826164/us-east-1",
+      "properties": {
+        "templateFile": "MidianitaInfrastructureIaCStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::633574826164:role/cdk-hnb659fds-deploy-role-633574826164-us-east-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::633574826164:role/cdk-hnb659fds-cfn-exec-role-633574826164-us-east-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-633574826164-us-east-1/eafa2c441428a7bd899e1cf43e3a32d5788337be7ade5fdf473440b43420b4aa.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "MidianitaInfrastructureIaCStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::633574826164:role/cdk-hnb659fds-lookup-role-633574826164-us-east-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "MidianitaInfrastructureIaCStack.assets"
+      ],
+      "metadata": {
+        "/MidianitaInfrastructureIaCStack/DesignsTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "DesignsTableBF64AC56"
+            }
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/DesignsTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DesignsTableBF64AC56"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AuditTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "AuditTableB07F8EEB"
+            }
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AuditTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AuditTableB07F8EEB"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AuditQueue/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AuditQueue1D3C234B"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AssetsBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AssetsBucket5CB76180"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AssetsBucket/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AssetsBucketPolicyFFACF6C4"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AssetsBucket/AutoDeleteObjectsCustomResource/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AssetsBucketAutoDeleteObjectsCustomResource51BA1286"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/Region": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Region"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/QueueUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "QueueUrl"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/S3BucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "S3BucketName"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/DesignsTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DesignsTableName"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AuditTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AuditTableName"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "MidianitaInfrastructureIaCStack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}
