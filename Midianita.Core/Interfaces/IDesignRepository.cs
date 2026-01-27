@@ -1,15 +1,9 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Midianita.Core.Entities;
+﻿using Midianita.Core.Entities;
 
 namespace Midianita.Core.Interfaces
 {
-    public interface IDesignRepository
+    public interface IDesignRepository : IBaseRepository<Design>
     {
-        Task CreateAsync(Design design);
-        Task<Design?> GetByIdAsync(string id);
-        Task<IEnumerable<Design>> GetAllAsync();
-        Task UpdateAsync(Design design);
-        Task DeleteAsync(string id);
+        public new Task CreateAsync(Design design);
     }
 }
