@@ -9,5 +9,17 @@ namespace Midianita.Core.Entities
         public string UserId { get; set; } = string.Empty;
         public string Details { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+
+        public AuditLogEntry() { }
+
+        public AuditLogEntry(string logId, string action, string userId, string details, DateTime timestamp)
+        {
+            LogId = logId;
+            Action = action;
+            UserId = userId;
+            Details = details;
+            Timestamp = timestamp;
+        }
     }
 }

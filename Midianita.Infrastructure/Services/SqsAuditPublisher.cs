@@ -12,10 +12,10 @@ namespace Midianita.Infrastructure.Services
         private readonly IAmazonSQS _sqsClient;
         private readonly string _queueUrl;
 
-        public SqsAuditPublisher(IAmazonSQS sqsClient, string queueUrl = "Midianita_AuditQueue")
+        public SqsAuditPublisher(IAmazonSQS sqsClient, string queueUrl = "Midianita_Dev_AuditQueue")
         {
             _sqsClient = sqsClient;
-            _queueUrl = queueUrl; // Ideally loaded from configuration
+            _queueUrl = queueUrl;
         }
 
         public async Task PublishAsync(AuditLogEntry entry)

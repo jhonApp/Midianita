@@ -1,7 +1,9 @@
+using Amazon.DynamoDBv2.DataModel;
 using System;
 
 namespace Midianita.Core.Entities
 {
+    [DynamoDBTable("Midianita_Dev_Designs")]
     public class Design
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();

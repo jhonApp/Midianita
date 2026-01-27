@@ -2,33 +2,41 @@ using Amazon.DynamoDBv2;
 using Amazon.SQS;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Midianita.Aplication.Interface;
+using Midianita.Aplication.Service;
 using Midianita.Core.Interfaces;
 using Midianita.Infrastructure.Repositories;
 using Midianita.Infrastructure.Services;
-using System.Net.Http;
 
 namespace Midianita.Ioc
 {
     public static class DependencyContainer
     {
-        public static IServiceCollection AddInfrastructureDependencies(this IServiceCollection services, IConfiguration configuration)
+        public static IServiceCollection AddInfrastructureDependencies(this IServiceCollection services, string awsRegion)
         {
-            // AWS Options (loads from appsettings.json "AWS" section)
-            services.AddDefaultAWSOptions(configuration.GetAWSOptions());
-            services.AddAWSService<IAmazonDynamoDB>();
-            services.AddAWSService<IAmazonSQS>();
-
+            services.AddHttpContextAccessor();
             services.AddHttpClient();
 
             services.AddScoped<IDesignRepository, DynamoDbDesignRepository>();
+            services.AddScoped<IDesignsService, DesignsService>();
+
             services.AddScoped<IVertexAiService>(sp =>
             {
                 var httpClient = sp.GetRequiredService<HttpClient>();
-                // Ideally from config
-                var projectId = configuration["Google:ProjectId"] ?? "default-project";
-                return new VertexAiService(httpClient, projectId);
+                return new VertexAiService(httpClient);
             });
-            services.AddSingleton<IAuditPublisher, SqsAuditPublisher>();
+
+            services.AddScoped<IAuditPublisher>(sp =>
+            {
+                var sqsClient = sp.GetRequiredService<IAmazonSQS>();
+                return new SqsAuditPublisher(sqsClient);
+            });
+
+            services.AddSingleton<IAmazonDynamoDB>(sp =>
+               new AmazonDynamoDBClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
+
+            services.AddSingleton<IAmazonSQS>(sp =>
+               new AmazonSQSClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
 
             return services;
         }

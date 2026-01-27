@@ -14,9 +14,9 @@ namespace Midianita.Infrastructure.Services
         private readonly string _projectId;
         private readonly string _location;
         private readonly string _publisher = "google";
-        private readonly string _model = "imagegeneration@005"; // Example model
+        private readonly string _model = "imagegeneration@005";
 
-        public VertexAiService(HttpClient httpClient, string projectId, string location = "us-central1")
+        public VertexAiService(HttpClient httpClient, string projectId = "", string location = "us-central1")
         {
             _httpClient = httpClient;
             _projectId = projectId;
@@ -54,7 +54,7 @@ namespace Midianita.Infrastructure.Services
             response.EnsureSuccessStatusCode();
 
             var responseString = await response.Content.ReadAsStringAsync();
-            return responseString; // Rough return, in real world we'd parse the base64 image out
+            return responseString;
         }
     }
 }

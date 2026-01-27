@@ -3,7 +3,9 @@ using Midianita.Ioc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddInfrastructureDependencies(builder.Configuration);
+var awsRegion = builder.Configuration["AWS:Region"];
+
+builder.Services.AddInfrastructureDependencies(awsRegion);
 
 builder.Services.AddControllers(options =>
 {

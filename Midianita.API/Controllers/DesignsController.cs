@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Midianita.Core.Entities;
-using Midianita.Core.Interfaces;
+using Midianita.Aplication.Interface;
+using Midianita.Aplication.ViewModel;
 
 namespace Midianita.API.Controllers
 {
@@ -8,29 +8,24 @@ namespace Midianita.API.Controllers
     [Route("api/[controller]")]
     public class DesignsController : ControllerBase
     {
-        private readonly IDesignRepository _repository;
+        private readonly IDesignsService _designsService;
 
-        public DesignsController(IDesignRepository repository)
+        public DesignsController(IDesignsService designsService)
         {
-            _repository = repository;
+            _designsService = designsService;
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create(Design design)
+        public async Task<IActionResult> Create(RequestDesign design)
         {
-            await _repository.CreateAsync(design);
-            return CreatedAtAction(nameof(GetById), new { id = design.Id }, design);
-        }
+            var result = await _designsService.CreateAsync(design);
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(string id)
-        {
-            var design = await _repository.GetByIdAsync(id);
-            if (design == null)
+            if (result.Success)
             {
-                return NotFound();
+                return Ok(result.Data);
             }
-            return Ok(design);
+
+            return BadRequest(result.Message);
         }
     }
 }

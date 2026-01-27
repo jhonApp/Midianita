@@ -13,11 +13,13 @@
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.300" />
     <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.10.8" />
     <PackageReference Include="AWSSDK.SQS" Version="4.0.2.12" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Midianita.Core\Midianita.Core.csproj" />
     <ProjectReference Include="..\Midianita.Infrastructure\Midianita.Infrastructure.csproj" />
+    <ProjectReference Include="..\Midianita.Aplication\Midianita.Aplication.csproj" />
   </ItemGroup>
 
 </Project>
