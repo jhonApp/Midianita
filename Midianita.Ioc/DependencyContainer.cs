@@ -12,24 +12,38 @@ namespace Midianita.Ioc
 {
     public static class DependencyContainer
     {
-        public static IServiceCollection AddInfrastructureDependencies(this IServiceCollection services, string awsRegion)
+        public static IServiceCollection AddInfrastructureDependencies(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddHttpContextAccessor();
             services.AddHttpClient();
 
-            services.AddScoped<IDesignRepository, DynamoDbDesignRepository>();
+            var awsRegion = configuration["AWS:Region"];
+            var tableName = configuration["DynamoDb:TableName"] ?? "Midianita_Dev_Designs";
+            var auditQueueUrl = configuration["AWS:AuditQueueUrl"] ?? "Midianita_Dev_AuditQueue";
+            var projectId = configuration["GoogleCloud:ProjectId"];
+            var location = configuration["GoogleCloud:Location"];
+
+            services.AddScoped<IDesignRepository>(sp =>
+            {
+                var client = sp.GetRequiredService<IAmazonDynamoDB>();
+                return new DynamoDbDesignRepository(client, tableName);
+            });
+
             services.AddScoped<IDesignsService, DesignsService>();
+
+            services.AddScoped<ITokenProvider, GoogleTokenProvider>();
 
             services.AddScoped<IVertexAiService>(sp =>
             {
                 var httpClient = sp.GetRequiredService<HttpClient>();
-                return new VertexAiService(httpClient);
+                var tokenProvider = sp.GetRequiredService<ITokenProvider>();
+                return new VertexAiService(httpClient, tokenProvider, projectId, location);
             });
 
             services.AddScoped<IAuditPublisher>(sp =>
             {
                 var sqsClient = sp.GetRequiredService<IAmazonSQS>();
-                return new SqsAuditPublisher(sqsClient);
+                return new SqsAuditPublisher(sqsClient, auditQueueUrl);
             });
 
             services.AddSingleton<IAmazonDynamoDB>(sp =>

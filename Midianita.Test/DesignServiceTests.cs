@@ -1,19 +1,15 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-// using NSubstitute;
-// using Midianita.Aplication.Service;
-// using Midianita.Core.Interfaces;
+﻿using Xunit;
 
 namespace Midianita.Test
 {
-    [TestClass]
     public class DesignServiceTests
     {
-        // Add tests here later
+        // Add tests here later, ensuring xUnit syntax
         
-        [TestMethod]
+        [Fact]
         public void TestMethod1()
         {
-            Assert.IsTrue(true);
+             Assert.True(true);
         }
     }
 }
