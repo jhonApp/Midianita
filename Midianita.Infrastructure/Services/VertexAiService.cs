@@ -1,8 +1,5 @@
-using System;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Google.Apis.Auth.OAuth2;
 using Midianita.Core.Interfaces;
 
@@ -14,9 +11,9 @@ namespace Midianita.Infrastructure.Services
         private readonly string _projectId;
         private readonly string _location;
         private readonly string _publisher = "google";
-        private readonly string _model = "imagegeneration@005";
+        private readonly string _model = "imagen-3.0-generate-001";
 
-        public VertexAiService(HttpClient httpClient, string projectId = "", string location = "us-central1")
+        public VertexAiService(HttpClient httpClient, string projectId, string location)
         {
             _httpClient = httpClient;
             _projectId = projectId;
@@ -51,9 +48,14 @@ namespace Midianita.Infrastructure.Services
             var jsonContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync(endpoint, jsonContent);
-            response.EnsureSuccessStatusCode();
 
             var responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"Erro Vertex AI (HTTP {response.StatusCode}): {responseString}");
+            }
+
             return responseString;
         }
     }

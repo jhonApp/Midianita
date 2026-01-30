@@ -18,4 +18,10 @@
     <ProjectReference Include="..\Midianita.Ioc\Midianita.Ioc.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="appsettings.Production.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
