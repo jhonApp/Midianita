@@ -1,5 +1,6 @@
 using System.Net;
 using FluentAssertions;
+using Midianita.Core.Interfaces;
 using Midianita.Infrastructure.Services;
 using Moq;
 using Moq.Protected;
@@ -10,14 +11,20 @@ namespace Midianita.Test
     public class VertexAiServiceTests
     {
         private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+        private readonly Mock<ITokenProvider> _tokenProviderMock;
         private readonly HttpClient _httpClient;
         private readonly VertexAiService _service;
 
         public VertexAiServiceTests()
         {
             _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+            _tokenProviderMock = new Mock<ITokenProvider>();
             _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-            _service = new VertexAiService(_httpClient, "test-project", "us-central1");
+            
+            _tokenProviderMock.Setup(x => x.GetAccessTokenAsync())
+                .ReturnsAsync("fake-access-token");
+
+            _service = new VertexAiService(_httpClient, _tokenProviderMock.Object, "test-project", "us-central1");
         }
 
         [Fact]
@@ -28,7 +35,8 @@ namespace Midianita.Test
             _httpMessageHandlerMock.Protected()
                 .Setup<Task<HttpResponseMessage>>(
                     "SendAsync",
-                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.Is<HttpRequestMessage>(req => 
+                        req.Headers.Authorization.ToString() == "Bearer fake-access-token"),
                     ItExpr.IsAny<CancellationToken>()
                 )
                 .ReturnsAsync(new HttpResponseMessage

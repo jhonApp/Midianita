@@ -8,26 +8,23 @@ namespace Midianita.Infrastructure.Services
     public class VertexAiService : IVertexAiService
     {
         private readonly HttpClient _httpClient;
+        private readonly ITokenProvider _tokenProvider;
         private readonly string _projectId;
         private readonly string _location;
         private readonly string _publisher = "google";
         private readonly string _model = "imagen-3.0-generate-001";
 
-        public VertexAiService(HttpClient httpClient, string projectId, string location)
+        public VertexAiService(HttpClient httpClient, ITokenProvider tokenProvider, string projectId, string location)
         {
             _httpClient = httpClient;
+            _tokenProvider = tokenProvider;
             _projectId = projectId;
             _location = location;
         }
 
         public async Task<string> GenerateImageAsync(string prompt)
         {
-            var credential = GoogleCredential.GetApplicationDefault();
-            if (credential.IsCreateScopedRequired)
-            {
-                credential = credential.CreateScoped(new[] { "https://www.googleapis.com/auth/cloud-platform" });
-            }
-            var accessToken = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+            var accessToken = await _tokenProvider.GetAccessTokenAsync();
 
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 

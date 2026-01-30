@@ -31,10 +31,13 @@ namespace Midianita.Ioc
 
             services.AddScoped<IDesignsService, DesignsService>();
 
+            services.AddScoped<ITokenProvider, GoogleTokenProvider>();
+
             services.AddScoped<IVertexAiService>(sp =>
             {
                 var httpClient = sp.GetRequiredService<HttpClient>();
-                return new VertexAiService(httpClient, projectId, location);
+                var tokenProvider = sp.GetRequiredService<ITokenProvider>();
+                return new VertexAiService(httpClient, tokenProvider, projectId, location);
             });
 
             services.AddScoped<IAuditPublisher>(sp =>
