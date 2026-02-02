@@ -1,4 +1,5 @@
 ﻿using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
 using Amazon.S3;
 using Amazon.SQS;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +49,18 @@ namespace Midianita.Ioc
             });
 
             services.AddScoped<IStorageService, S3StorageService>();
+
+            // --- 4. Auth & Identity ---
+            services.AddScoped<IDynamoDBContext>(sp => {
+                var client = sp.GetRequiredService<IAmazonDynamoDB>();
+                return new DynamoDBContext(client);
+            });
+
+            services.AddScoped<IUserRepository, DynamoDbUserRepository>();
+            services.AddScoped<IRefreshTokenRepository, DynamoDbRefreshTokenRepository>();
+            services.AddScoped<ICryptographyService, Argon2PasswordHasher>();
+            services.AddScoped<ITokenService, JwtTokenService>();
+            services.AddScoped<IAuthService, AuthService>();
 
             return services;
         }

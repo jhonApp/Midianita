@@ -8,8 +8,9 @@ namespace Midianita.API.Extensions
     {
         public static IServiceCollection AddDynamicAuthentication(this IServiceCollection services, IConfiguration configuration)
         {
-            var jwtSettings = configuration.GetSection("JwtSettings");
-            var useLocalKey = jwtSettings.GetValue<bool>("UseLocalKey");
+            var secretKey = configuration["Jwt:SecretKey"];
+            var issuer = configuration["Jwt:Issuer"];
+            var audience = configuration["Jwt:Audience"];
 
             services.AddAuthentication(options =>
             {
@@ -18,37 +19,16 @@ namespace Midianita.API.Extensions
             })
             .AddJwtBearer(options =>
             {
-                if (useLocalKey)
+                options.TokenValidationParameters = new TokenValidationParameters
                 {
-                    var secretKey = jwtSettings.GetValue<string>("SecretKey");
-                    var issuer = jwtSettings.GetValue<string>("Issuer");
-                    var audience = jwtSettings.GetValue<string>("Audience");
-
-                    options.TokenValidationParameters = new TokenValidationParameters
-                    {
-                        ValidateIssuer = true,
-                        ValidateAudience = true,
-                        ValidateLifetime = true,
-                        ValidateIssuerSigningKey = true,
-                        ValidIssuer = issuer,
-                        ValidAudience = audience,
-                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
-                    };
-                }
-                else
-                {
-                    var authority = jwtSettings.GetValue<string>("Authority");
-                    var audience = jwtSettings.GetValue<string>("Audience");
-
-                    options.Authority = authority;
-                    options.Audience = audience;
-
-                    options.TokenValidationParameters = new TokenValidationParameters
-                    {
-                        ValidateAudience = true,
-                        NameClaimType = "sub" // Crucial for providers like Clerk/Auth0
-                    };
-                }
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = issuer,
+                    ValidAudience = audience,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
+                };
             });
 
             return services;

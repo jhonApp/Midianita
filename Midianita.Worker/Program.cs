@@ -1,130 +1,74 @@
-using Amazon.Lambda.SQSEvents;
-using Amazon.SQS;
-using Amazon.SQS.Model;
-using Amazon.S3;
 using Amazon.DynamoDBv2;
-using Midianita.Worker;
-using Microsoft.Extensions.DependencyInjection;
+using Amazon.S3;
+using Amazon.SQS;
 using Microsoft.Extensions.Configuration;
-using Midianita.Infrastructure.Services;
-using Midianita.Core.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Midianita.Worker.Extensions;
+using Midianita.Worker.Interfaces;
+using Midianita.Worker.Workers;
 
-// LOCAL DEBUGGING ENTRY POINT
-// This allows running the worker as a Console App to poll SQS real-time.
-
-var queueUrl = "https://sqs.us-east-1.amazonaws.com/633574826164/image-generation-queue";
-var region = Amazon.RegionEndpoint.USEast1;
-
-// FORCE DEV CONFIGURATION (Local Console App Only)
-// Maps to configuration["AWS:BucketName"] and configuration["AWS:Region"]
-Environment.SetEnvironmentVariable("AWS__BucketName", "midianita-dev-assets");
-Environment.SetEnvironmentVariable("AWS__Region", "us-east-1");
-
-Console.WriteLine("Starting Worker...");
-Console.WriteLine($"Polling Queue: {queueUrl}");
-
-// 1. Setup Configuration with Manual Overrides
-var inMemorySettings = new Dictionary<string, string> {
-    {"GCP:ProjectId", "mythic-inn-144217"},
-    {"GCP:Location", "us-central1"}
-};
-
-var configuration = new ConfigurationBuilder()
-    .AddInMemoryCollection(inMemorySettings!)
-    .AddEnvironmentVariables()
-    .Build();
-
-// 2. Instantiate AWS Clients Manually
-var s3Client = new AmazonS3Client(region);
-var dynamoClient = new AmazonDynamoDBClient(region);
-var sqsClient = new AmazonSQSClient(region);
-
-// 3. Setup Dependency Injection for Function
-var services = new ServiceCollection();
-
-// Register Configuration
-services.AddSingleton<IConfiguration>(configuration);
-services.AddLogging();
-services.AddHttpClient();
-
-// Register Dependencies Manually
-services.AddSingleton<IAmazonS3>(s3Client);
-services.AddSingleton<IAmazonDynamoDB>(dynamoClient); // Even if not used directly in Handler, good practice
-services.AddScoped<ITokenProvider, GoogleTokenProvider>();
-
-// Register Services
-// Note: We need to register VertexAiService. 
-// It requires (HttpClient, ITokenProvider, projectId, location)
-// We get projectId and location from config or hardcode for local debug if needed.
-// Register Vertex AI Service
-services.AddScoped<IVertexAiService>(sp =>
+namespace Midianita.Worker
 {
-    var http = sp.GetRequiredService<HttpClient>();
-    var token = sp.GetRequiredService<ITokenProvider>();
-    var config = sp.GetRequiredService<IConfiguration>();
-    return new VertexAiService(http, token, config);
-});
-
-services.AddScoped<IStorageService, S3StorageService>();
-
-var serviceProvider = services.BuildServiceProvider();
-
-// 4. Instantiate Worker Function with Manual Provider
-var worker = new Function(serviceProvider);
-var context = new ConsoleLambdaContext(); // Mock Context
-
-// 5. Polling Loop
-while (true)
-{
-    try
+    public class Program
     {
-        var request = new ReceiveMessageRequest
+        public static async Task Main(string[] args)
         {
-            QueueUrl = queueUrl,
-            WaitTimeSeconds = 20, // Long Polling
-            MaxNumberOfMessages = 1
-        };
+            var region = Amazon.RegionEndpoint.USEast1;
 
-        var response = await sqsClient.ReceiveMessageAsync(request);
+            // 1. Setup Configuration
+            // FORCE DEV CONFIGURATION (Local Console App Only)
+            Environment.SetEnvironmentVariable("AWS__BucketName", "midianita-dev-assets");
+            Environment.SetEnvironmentVariable("AWS__Region", "us-east-1");
 
-        if (response.Messages == null || response.Messages.Count == 0)
-        {
-            // No messages, continue polling
-            continue;
-        }
-
-        foreach (var msg in response.Messages)
-        {
-            Console.WriteLine($"Received message: {msg.MessageId}");
-
-            // Map standard SQS Message to Lambda SQSEvent
-            var lambdaEvent = new SQSEvent
-            {
-                Records = new List<SQSEvent.SQSMessage>
-                {
-                    new SQSEvent.SQSMessage
-                    {
-                        Body = msg.Body,
-                        MessageId = msg.MessageId,
-                        ReceiptHandle = msg.ReceiptHandle,
-                        EventSource = "aws:sqs",
-                        AwsRegion = region.SystemName
-                    }
-                }
+            var inMemorySettings = new Dictionary<string, string> {
+                {"GCP:ProjectId", "mythic-inn-144217"},
+                {"GCP:Location", "us-central1"}
             };
 
-            // Invoke the Worker Function
-            await worker.FunctionHandler(lambdaEvent, context);
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(inMemorySettings!)
+                .AddEnvironmentVariables()
+                .Build();
 
-            // Delete message on success
-            await sqsClient.DeleteMessageAsync(queueUrl, msg.ReceiptHandle);
-            Console.WriteLine("Message processed and deleted.");
+            Console.WriteLine("Starting Worker with Parallel Polling (Refactored)...");
+
+            // 2. Setup Dependency Injection
+            var services = new ServiceCollection();
+
+            // Use Extension Method for Core Services
+            services.AddWorkerServices(configuration);
+
+            // Register AWS Clients Manually (for specific region control)
+            services.AddSingleton<IAmazonS3>(new AmazonS3Client(region));
+            services.AddSingleton<IAmazonDynamoDB>(new AmazonDynamoDBClient(region));
+            services.AddSingleton<IAmazonSQS>(new AmazonSQSClient(region));
+
+            // Register Workers
+            services.AddSingleton<IQueueWorker, GenerationWorker>();
+            services.AddSingleton<IQueueWorker, CleanupWorker>();
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            // 3. Resolve and Run Workers
+            var workers = serviceProvider.GetServices<IQueueWorker>();
+            var cts = new CancellationTokenSource();
+
+            var tasks = new List<Task>();
+            foreach (var worker in workers)
+            {
+                tasks.Add(worker.ExecuteAsync(cts.Token));
+            }
+
+            Console.WriteLine($"Running {tasks.Count} workers in parallel. Press Ctrl+C to stop.");
+            
+            Console.CancelKeyPress += (s, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+                Console.WriteLine("Stopping workers...");
+            };
+
+            await Task.WhenAll(tasks);
         }
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"Error in polling loop: {ex.Message}");
-        // Wait a bit before retrying to avoid spamming logs if SQS is down
-        await Task.Delay(5000); 
     }
 }
