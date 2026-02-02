@@ -24,6 +24,9 @@ namespace Midianita.Ioc
             services.AddSingleton<IAmazonSQS>(sp => CreateSqsClient(configuration));
             services.AddSingleton<IAmazonS3>(sp => CreateS3Client(configuration));
 
+            services.AddScoped<ITokenProvider, GoogleTokenProvider>();
+            services.AddScoped<IVertexAiService, VertexAiService>();
+
             // --- 3. Repositories & Services ---
             services.AddScoped<IDesignRepository, DynamoDbDesignRepository>(sp =>
             {

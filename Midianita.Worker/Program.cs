@@ -23,8 +23,14 @@ Environment.SetEnvironmentVariable("AWS__Region", "us-east-1");
 Console.WriteLine("Starting Worker...");
 Console.WriteLine($"Polling Queue: {queueUrl}");
 
-// 1. Setup Configuration (Environment Variables for Prod/Dev parity)
+// 1. Setup Configuration with Manual Overrides
+var inMemorySettings = new Dictionary<string, string> {
+    {"GCP:ProjectId", "mythic-inn-144217"},
+    {"GCP:Location", "us-central1"}
+};
+
 var configuration = new ConfigurationBuilder()
+    .AddInMemoryCollection(inMemorySettings!)
     .AddEnvironmentVariables()
     .Build();
 
@@ -50,14 +56,13 @@ services.AddScoped<ITokenProvider, GoogleTokenProvider>();
 // Note: We need to register VertexAiService. 
 // It requires (HttpClient, ITokenProvider, projectId, location)
 // We get projectId and location from config or hardcode for local debug if needed.
-var projectId = configuration["GOOGLE_PROJECT_ID"] ?? "mythic-inn-144217"; // Fallback/Dummy
-var location = configuration["GOOGLE_LOCATION"] ?? "us-central1";
-
+// Register Vertex AI Service
 services.AddScoped<IVertexAiService>(sp =>
 {
     var http = sp.GetRequiredService<HttpClient>();
     var token = sp.GetRequiredService<ITokenProvider>();
-    return new VertexAiService(http, token, projectId, location);
+    var config = sp.GetRequiredService<IConfiguration>();
+    return new VertexAiService(http, token, config);
 });
 
 services.AddScoped<IStorageService, S3StorageService>();
