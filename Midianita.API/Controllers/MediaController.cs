@@ -1,4 +1,7 @@
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Midianita.API.Extensions;
+using Midianita.Core.DTOs;
 using Midianita.Core.Interfaces;
 
 namespace Midianita.API.Controllers
@@ -7,25 +10,33 @@ namespace Midianita.API.Controllers
     [Route("api/[controller]")]
     public class MediaController : ControllerBase
     {
-        private readonly IVertexAiService _vertexAiService;
+        private readonly IQueuePublisher _publisher;
 
-        public MediaController(IVertexAiService vertexAiService)
+        public MediaController(IQueuePublisher publisher)
         {
-            _vertexAiService = vertexAiService;
+            _publisher = publisher;
         }
 
         [HttpPost("generate-image")]
-        public async Task<IActionResult> GenerateImage([FromBody] string prompt)
+        public async Task<IActionResult> GenerateImage([FromBody] GenerateImageRequest request)
         {
-            try
+            if (string.IsNullOrWhiteSpace(request.Prompt))
+                return BadRequest("O prompt é obrigatório.");
+
+            var jobId = Guid.NewGuid();
+
+            var job = new ImageGenerationJob
             {
-                var result = await _vertexAiService.GenerateImageAsync(prompt);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
-            }
+                JobId = jobId,
+                UserId = User.GetUserId(),
+                Prompt = request.Prompt,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _publisher.PublishAsync(job, "GenerationQueueUrl");
+            // Em vez de Console.WriteLine, use:
+            System.Diagnostics.Debug.WriteLine("🚀 Enviando Job para fila SQS...");
+            return Accepted(new { JobId = jobId, Status = "Processing" });
         }
     }
 }

@@ -1,7 +1,13 @@
 using Midianita.API.Filters;
 using Midianita.Ioc;
+using Midianita.API.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+
+// Use the new Dynamic Authentication extension
+builder.Services.AddDynamicAuthentication(builder.Configuration);
 
 builder.Services.AddInfrastructureDependencies(builder.Configuration);
 
@@ -23,6 +29,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Ensure Authentication is used before Authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
