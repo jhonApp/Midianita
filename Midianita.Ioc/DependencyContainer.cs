@@ -3,6 +3,8 @@ using Amazon.S3;
 using Amazon.SQS;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Midianita.Aplication.Interface;
+using Midianita.Aplication.Service;
 using Midianita.Core.Interfaces;
 using Midianita.Infrastructure.Repositories;
 using Midianita.Infrastructure.Services;
@@ -26,6 +28,7 @@ namespace Midianita.Ioc
 
             services.AddScoped<ITokenProvider, GoogleTokenProvider>();
             services.AddScoped<IVertexAiService, VertexAiService>();
+            services.AddScoped<IDesignsService, DesignsService>();
 
             // --- 3. Repositories & Services ---
             services.AddScoped<IDesignRepository, DynamoDbDesignRepository>(sp =>

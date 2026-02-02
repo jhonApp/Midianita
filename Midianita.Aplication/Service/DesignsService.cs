@@ -65,9 +65,9 @@ namespace Midianita.Aplication.Service
             throw new NotImplementedException();
         }
 
-        public Task<Design?> GetByIdAsync(string id)
+        public async Task<Design?> GetByIdAsync(string id)
         {
-            throw new NotImplementedException();
+            return await _designRepository.GetByIdAsync(id);
         }
 
         public Task UpdateAsync(Design design)

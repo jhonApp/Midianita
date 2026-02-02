@@ -24,7 +24,11 @@ namespace Midianita.Test
             _tokenProviderMock.Setup(x => x.GetAccessTokenAsync())
                 .ReturnsAsync("fake-access-token");
 
-            _service = new VertexAiService(_httpClient, _tokenProviderMock.Object, "test-project", "us-central1");
+            var configurationMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+            configurationMock.Setup(c => c["GCP:ProjectId"]).Returns("test-project");
+            configurationMock.Setup(c => c["GCP:Location"]).Returns("us-central1");
+
+            _service = new VertexAiService(_httpClient, _tokenProviderMock.Object, configurationMock.Object);
         }
 
         [Fact]

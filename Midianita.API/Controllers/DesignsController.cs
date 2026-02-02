@@ -27,5 +27,18 @@ namespace Midianita.API.Controllers
 
             return BadRequest(result.Message);
         }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> Get(string id)
+        {
+            var design = await _designsService.GetByIdAsync(id);
+
+            if (design == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(design);
+        }
     }
 }
