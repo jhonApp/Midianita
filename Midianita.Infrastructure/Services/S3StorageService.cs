@@ -32,5 +32,53 @@ namespace Midianita.Infrastructure.Services
             // Also depends on bucket policy/public access settings.
             return $"https://{_bucketName}.s3.amazonaws.com/{fileName}";
         }
+
+        public async Task<string> PromoteAssetAsync(string tempKey, string userId)
+        {
+            if (string.IsNullOrEmpty(tempKey))
+            {
+                throw new ArgumentNullException(nameof(tempKey), "Temporary key cannot be null or empty.");
+            }
+
+            try
+            {
+                // Extract filename from the tempKey (assuming it might be a full URL or just a key)
+                // If it's a full URL, we need to extract the key part. 
+                // However, based on the requirement "tempKey", we assume it is the object key.
+                // Standardizing: if it comes as a URL, we try to extract the last part.
+                var fileName = Path.GetFileName(tempKey);
+                
+                // Construct destination key: users/{userId}/assets/{fileName}
+                var destinationKey = $"users/{userId}/assets/{fileName}";
+
+                var copyRequest = new CopyObjectRequest
+                {
+                    SourceBucket = _bucketName,
+                    SourceKey = tempKey,
+                    DestinationBucket = _bucketName,
+                    DestinationKey = destinationKey
+                };
+
+                await _s3Client.CopyObjectAsync(copyRequest);
+
+                var deleteRequest = new DeleteObjectRequest
+                {
+                    BucketName = _bucketName,
+                    Key = tempKey
+                };
+
+                await _s3Client.DeleteObjectAsync(deleteRequest);
+
+                return $"https://{_bucketName}.s3.amazonaws.com/{destinationKey}";
+            }
+            catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchKey")
+            {
+                throw new FileNotFoundException($"The temporary asset '{tempKey}' was not found.", tempKey, ex);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to promote asset '{tempKey}' for user '{userId}'.", ex);
+            }
+        }
     }
 }
