@@ -34,8 +34,7 @@ namespace Midianita.API.Controllers
             };
 
             await _publisher.PublishAsync(job, "GenerationQueueUrl");
-            // Em vez de Console.WriteLine, use:
-            System.Diagnostics.Debug.WriteLine("🚀 Enviando Job para fila SQS...");
+
             return Accepted(new { JobId = jobId, Status = "Processing" });
         }
     }

@@ -7,6 +7,7 @@ using Midianita.Infrastructure.Services;
 using System.Text.Json;
 using Amazon.S3;
 using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
 using Amazon.SQS;
 using Midianita.Core.DTOs;
 
@@ -57,7 +58,8 @@ namespace Midianita.Worker
             {
                 var httpClient = sp.GetRequiredService<HttpClient>();
                 var tokenProvider = sp.GetRequiredService<ITokenProvider>();
-                return new VertexAiService(httpClient, tokenProvider, projectId, location);
+                var configuration = sp.GetRequiredService<IConfiguration>();
+                return new VertexAiService(httpClient, tokenProvider, configuration);
             });
 
             // Register AWS Services
@@ -111,68 +113,92 @@ namespace Midianita.Worker
                         var userId = !string.IsNullOrWhiteSpace(job.UserId) ? job.UserId : "anonymous";
                         context.Logger.LogLine($"Generating image for User: {userId}, Prompt: {job.Prompt}");
 
-                        // Generate Image (Vertex AI returns JSON with Base64)
-                        var responseJson = await vertexAiService.GenerateImageAsync(job.Prompt);
-                        
-                        // Parse Vertex AI Response to get Base64 string
-                        // Assuming response format: { "predictions": [ "base64..." ] }
-                        // Need a robust parsing here. For now, simple extraction.
-                        // In a real scenario, use a class/record for response.
+                        // Execute tasks in parallel
+                        // Note: If text generation fails, we might still want the image, or fail all? 
+                        // Requirement implies simultaneous generation. We await both.
+                        var imageTask = vertexAiService.GenerateImageAsync(job.Prompt);
+                        var textTask = vertexAiService.GenerateTextAsync(job.Prompt);
+
+                        await Task.WhenAll(imageTask, textTask);
+
+                        var responseJson = await imageTask;
+                        var generatedText = await textTask;
+
+                        context.Logger.LogLine($"Generated Copy: {generatedText}");
+
+                        // Parse Vertex AI Response...
                         using var doc = JsonDocument.Parse(responseJson);
                         
                         if (!doc.RootElement.TryGetProperty("predictions", out var predictions))
                         {
-                            context.Logger.LogLine($"Error: 'predictions' missing in Vertex AI response: {responseJson}");
-                            continue;
+                             context.Logger.LogLine($"Error: 'predictions' missing: {responseJson}");
+                             continue;
                         }
 
                         if (predictions.GetArrayLength() == 0)
                         {
-                            context.Logger.LogLine("Error: 'predictions' array is empty.");
-                            continue;
+                             context.Logger.LogLine("Error: No predictions found.");
+                             continue;
                         }
 
+                        var base64Image = "";
                         var firstPrediction = predictions[0];
-                        string? base64Image = null;
 
-                        // Check if prediction is a string (older models) or object (Imagen)
-                        if (firstPrediction.ValueKind == JsonValueKind.String)
-                        {
-                            base64Image = firstPrediction.GetString();
-                        }
-                        else if (firstPrediction.ValueKind == JsonValueKind.Object)
-                        {
-                            if (firstPrediction.TryGetProperty("bytesBase64Encoded", out var bytesProperty))
-                            {
-                                base64Image = bytesProperty.GetString();
-                            }
-                            else
-                            {
-                                context.Logger.LogLine($"Error: 'bytesBase64Encoded' missing in prediction object: {firstPrediction.GetRawText()}");
-                                continue;
-                            }
-                        }
-
-                        if (string.IsNullOrEmpty(base64Image))
-                        {
-                            throw new Exception("No image data received from Vertex AI.");
-                        }
+                         if (firstPrediction.ValueKind == JsonValueKind.String) 
+                         {
+                             base64Image = firstPrediction.GetString();
+                         }
+                         else if (firstPrediction.ValueKind == JsonValueKind.Object && firstPrediction.TryGetProperty("bytesBase64Encoded", out var bytesProperty)) 
+                         {
+                             base64Image = bytesProperty.GetString();
+                         }
+                         
+                         if (string.IsNullOrEmpty(base64Image)) 
+                         {
+                             throw new Exception("No image data found in response.");
+                         }
 
                         var imageBytes = Convert.FromBase64String(base64Image);
                         using var memoryStream = new MemoryStream(imageBytes);
 
                         // Upload to S3
                         var fileName = $"temp/{job.JobId}.png";
-                        // Note: S3StorageService.PromoteAssetAsync uses userId to move this later. 
-                        // For now we upload to temp.
                         var url = await storageService.UploadFileAsync(memoryStream, fileName, "image/png");
 
                         context.Logger.LogLine($"Image generated and uploaded to: {url}");
 
-                        // Note: In a real event-driven architecture, we might want to:
-                        // 1. Update DynamoDB status to 'Completed'.
-                        // 2. Send a notification (SNS/WebSocket).
-                        // However, the prompt only asks to process and upload.
+                        // Update DynamoDB
+                        // PK: JOB#{jobId}
+                        // SK: METADATA
+                        var dynamoClient = scope.ServiceProvider.GetRequiredService<IAmazonDynamoDB>();
+                        var tableName = "Midianita_Dev_Designs"; // Ideally from config
+
+                        var updateRequest = new UpdateItemRequest
+                        {
+                            TableName = tableName,
+                            Key = new Dictionary<string, AttributeValue>
+                            {
+                                { "Id", new AttributeValue { S = job.JobId.ToString() } }
+                            },
+                            UpdateExpression = "SET #status = :status, #imageUrl = :imageUrl, #generatedText = :generatedText, #updatedAt = :updatedAt",
+                            ExpressionAttributeNames = new Dictionary<string, string>
+                            {
+                                { "#status", "Status" },
+                                { "#imageUrl", "ImageUrl" },
+                                { "#generatedText", "GeneratedText" },
+                                { "#updatedAt", "UpdatedAt" }
+                            },
+                            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                            {
+                                { ":status", new AttributeValue { S = "COMPLETED" } },
+                                { ":imageUrl", new AttributeValue { S = url } },
+                                { ":generatedText", new AttributeValue { S = generatedText } },
+                                { ":updatedAt", new AttributeValue { S = DateTime.UtcNow.ToString("O") } }
+                            }
+                        };
+
+                        await dynamoClient.UpdateItemAsync(updateRequest);
+                        context.Logger.LogLine("DynamoDB updated with status COMPLETED.");
                     }
                     catch (Exception ex)
                     {
