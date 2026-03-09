@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <AWSProjectType>Lambda</AWSProjectType>
+    <!-- This property makes the build directory similar to a publish directory and simplifies the
+         temporary deployment process. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Generate ready to run images during publishing to improve cold start time. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <RootNamespace>Midianita.Workers.AnalisadorBanner</RootNamespace>
+    <AssemblyName>Midianita.Workers.AnalisadorBanner</AssemblyName>
+    <UserSecretsId>0de31d6b-a19c-4e90-9897-d7d53e0762ad</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AWS Lambda Core -->
+    <PackageReference Include="Amazon.Lambda.Core" Version="2.2.0" />
+    <PackageReference Include="Amazon.Lambda.S3Events" Version="3.1.1" />
+    <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.2" />
+
+    <!-- AWS SDKs -->
+    <PackageReference Include="AWSSDK.S3" Version="3.7.303.17" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.302.16" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.100.4" />
+
+    <!-- Microsoft Extensions for DI / Logging -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+  </ItemGroup>
+
+</Project>
