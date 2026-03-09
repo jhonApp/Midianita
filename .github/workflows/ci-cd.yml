@@ -70,7 +70,7 @@ jobs:
       # 8. NOVO PASSO: Publish (Gerar binários finais para o Lambda)
       # Precisamos gerar os arquivos finais em uma pasta específica para enviar pro deploy
       - name: Publish Lambda Artifacts
-        run: dotnet publish ${{ env.SOLUTION_PATH }} -c Release -o ${{ env.LAMBDA_PUBLISH_DIR }} --no-build
+        run: dotnet publish ./Workers/Midianita.Workers.AnalisadorBanner/Midianita.Workers.AnalisadorBanner.csproj -c Release -r linux-x64 --self-contained false -o ${{ env.LAMBDA_PUBLISH_DIR }}
 
       # 9. NOVO PASSO: Upload Artifact
       # Envia a pasta de publish para o GitHub, para o próximo job baixar
@@ -88,7 +88,7 @@ jobs:
     name: Deploy to AWS
     needs: build_and_test # Espera o job acima terminar
     runs-on: ubuntu-latest
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
     
     steps:
       - name: Checkout Code

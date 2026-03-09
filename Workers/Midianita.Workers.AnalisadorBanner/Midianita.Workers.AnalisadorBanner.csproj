@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -10,7 +10,7 @@
          temporary deployment process. -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <!-- Generate ready to run images during publishing to improve cold start time. -->
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRun>false</PublishReadyToRun>
     <RootNamespace>Midianita.Workers.AnalisadorBanner</RootNamespace>
     <AssemblyName>Midianita.Workers.AnalisadorBanner</AssemblyName>
     <UserSecretsId>0de31d6b-a19c-4e90-9897-d7d53e0762ad</UserSecretsId>
