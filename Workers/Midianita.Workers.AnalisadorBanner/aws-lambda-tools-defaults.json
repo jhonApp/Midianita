@@ -1,0 +1,17 @@
+{
+  "Information": [
+    "This file is used to store the configuration for the AWS Lambda tools.",
+    "It is used by the dotnet lambda CLI tool and AWS Toolkit for VS.",
+    "Visit https://github.com/aws/aws-extensions-for-dotnet-cli for reference."
+  ],
+  "profile"              : "default",
+  "region"               : "us-east-1",
+  "configuration"        : "Release",
+  "function-runtime"     : "dotnet8",
+  "function-memory-size" : 256,
+  "function-timeout"     : 60,
+  "function-handler"     : "Midianita.Workers.AnalisadorBanner::Midianita.Workers.AnalisadorBanner.Function::FunctionHandler",
+  "framework"            : "net8.0",
+  "package-type"         : "Zip",
+  "function-name"        : "Midianita-AnalisadorBanner"
+}

@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "Mock Lambda Test Tool": {
+      "commandName": "Executable",
+      "executablePath": "dotnet-lambda-test-tool-8.0",
+      "commandLineArgs": "--port 5050",
+      "workingDirectory": "$(ProjectDir)",
+      "environmentVariables": {
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "[ENCRYPTION_KEY]"
+      }
+    }
+  }
+}
