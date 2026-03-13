@@ -364,3 +364,5 @@ FodyWeavers.xsd
 
 # Local settings
 Properties/launchSettings.json
+# GCP Service Account Keys
+keys/
