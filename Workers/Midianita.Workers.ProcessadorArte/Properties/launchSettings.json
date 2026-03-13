@@ -1,0 +1,18 @@
+{
+  "profiles": {
+    "Mock Lambda Test Tool": {
+      "commandName": "Executable",
+      "executablePath": "dotnet-lambda-test-tool-8.0",
+      "commandLineArgs": "--port 5051",
+      "workingDirectory": "$(ProjectDir)",
+      "environmentVariables": {
+        "AWS_REGION": "us-east-1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "D:\\Project\\Midianita\\keys\\mythic-inn-144217-714b072b2303.json",
+        "GOOGLE_PROJECT_ID": "mythic-inn-144217",
+        "GOOGLE_LOCATION": "us-central1",
+        "RMBG_API_KEY": "afkVu4jcehGX8fbNf6egwsAN",
+        "OUTPUT_S3_BUCKET": "midianita-dev-assets"
+      }
+    }
+  }
+}

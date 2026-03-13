@@ -1,0 +1,12 @@
+{
+  "Records": [
+    {
+      "messageId": "19dd0b57-b21e-4ac1-bd88-01bbb068cb78",
+      "receiptHandle": "MessageReceiptHandle",
+      "body": "{\"JobId\":\"job-teste-123\",\"BannerId\":\"36bb17f2-18b2-4cee-b37e-e9a1f0037a53\",\"UserPhotoUrl\":\"https://sua-url-de-teste.com/foto.jpg\",\"UserText\":\"Domingo às 19h\"}",
+      "attributes": { "ApproximateReceiveCount": "1" },
+      "eventSource": "aws:sqs",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}
