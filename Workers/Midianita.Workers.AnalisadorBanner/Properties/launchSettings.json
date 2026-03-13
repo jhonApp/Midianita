@@ -6,8 +6,7 @@
       "commandLineArgs": "--port 5050",
       "workingDirectory": "$(ProjectDir)",
       "environmentVariables": {
-        "AWS_REGION": "us-east-1",
-        "OPENAI_API_KEY": "[ENCRYPTION_KEY]"
+        "AWS_REGION": "us-east-1"
       }
     }
   }

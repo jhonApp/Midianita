@@ -34,7 +34,15 @@ public sealed class DynamoDbBannerRepository : IBannerRepository
             ["MasterPrompt"]     = new AttributeValue { S    = result.MasterPrompt },
             ["Colors"]           = new AttributeValue { SS   = result.Colors },
             ["Typography"]       = new AttributeValue { S    = result.Typography },
-            ["LayoutRules"]      = new AttributeValue { S    = result.LayoutRules },
+            ["LayoutRules"]      = new AttributeValue { 
+                M = new Dictionary<string, AttributeValue>
+                {
+                    ["CutoutPlacement"]       = new AttributeValue { S = result.LayoutRules.CutoutPlacement },
+                    ["CutoutScalePercentage"] = new AttributeValue { N = result.LayoutRules.CutoutScalePercentage.ToString() },
+                    ["TextPlacement"]         = new AttributeValue { S = result.LayoutRules.TextPlacement },
+                    ["TextAlign"]             = new AttributeValue { S = result.LayoutRules.TextAlign }
+                }
+            },
             ["Width"]            = new AttributeValue { N    = width.ToString() },
             ["Height"]           = new AttributeValue { N    = height.ToString() },
             ["HasCutoutImages"]  = new AttributeValue { BOOL = result.HasCutoutImages },

@@ -22,13 +22,18 @@ public sealed class OpenAiVisionService : IVisionApiService
         "Analyze this church worship banner. Extract the visual hierarchy, color palette (HEX), " +
         "typography style, and write a 'Master Prompt' that could be used in an AI image generator " +
         "to recreate this vibe. " +
+        "CRITICAL RULE FOR MASTER PROMPT: The `MasterPrompt` you generate will be used by an image generation AI to create ONLY THE BACKGROUND (the stage). " +
+        "Therefore, your `MasterPrompt` MUST NOT contain any instructions to generate people, crowds, pastors, singers, or human silhouettes. " +
+        "If the reference image has people, IGNORE THEM in the `MasterPrompt` and explicitly instruct the image generation AI to leave an empty/clean space in that area. " +
+        "Focus the `MasterPrompt` entirely on the lighting, textures, background typography, colors, and graphic elements. " +
         "Detect if the banner uses isolated/cutout images of people or objects (images with backgrounds removed). " +
         "If yes, briefly describe their position and scale in the layout " +
         "(e.g., 'bottom-right, large scale', 'center, overlapping text'). " +
         "If no, return null for placement. " +
+        "LAYOUT ANALYSIS: You must analyze the spatial composition of the reference image. Where is the main human subject located? Where is the primary text block? You MUST output a JSON object with a `layoutRules` property matching this exact structure: { \"cutoutPlacement\": \"BottomCenter|BottomRight|BottomLeft|Center\", \"cutoutScalePercentage\": <integer from 50 to 100>, \"textPlacement\": \"TopCenter|BottomCenter|TopLeft|etc\", \"textAlign\": \"Left|Center|Right\" }. Base these decisions strictly on the visual layout of the reference image provided. " +
         "Return ONLY a valid JSON object matching this schema: " +
         "{ \"masterPrompt\": \"string\", \"colors\": [\"string\"], " +
-        "\"typography\": \"string\", \"layoutRules\": \"string\", " +
+        "\"typography\": \"string\", \"layoutRules\": { \"cutoutPlacement\": \"string\", \"cutoutScalePercentage\": 0, \"textPlacement\": \"string\", \"textAlign\": \"string\" }, " +
         "\"hasCutoutImages\": boolean, \"cutoutPlacement\": \"string\" }.";
 
     private readonly HttpClient _httpClient;
