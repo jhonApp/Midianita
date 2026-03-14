@@ -35,11 +35,29 @@ public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
             throw new InvalidOperationException($"Banner '{bannerId}' not found in DynamoDB.");
 
         var item = response.Item;
+
+        var lr = new LayoutRules(
+            CutoutPlacement:       "",
+            CutoutScalePercentage: 0,
+            TextPlacement:         "",
+            TextAlign:             ""
+        );
+
+        if (item.TryGetValue("LayoutRules", out var lrMap) && lrMap.M != null)
+        {
+            lr = new LayoutRules(
+                CutoutPlacement:       lrMap.M.TryGetValue("CutoutPlacement",       out var cpVal) ? cpVal.S : "",
+                CutoutScalePercentage: lrMap.M.TryGetValue("CutoutScalePercentage", out var spVal) && int.TryParse(spVal.N, out var scale) ? scale : 0,
+                TextPlacement:         lrMap.M.TryGetValue("TextPlacement",         out var tpVal) ? tpVal.S : "",
+                TextAlign:             lrMap.M.TryGetValue("TextAlign",             out var taVal) ? taVal.S : ""
+            );
+        }
+
         var result = new BannerAnalysisResult(
             MasterPrompt:    item.TryGetValue("MasterPrompt",    out var mp)  ? mp.S  : string.Empty,
             Colors:          item.TryGetValue("Colors",          out var col) ? col.SS : new List<string>(),
             Typography:      item.TryGetValue("Typography",      out var ty)  ? ty.S  : string.Empty,
-            LayoutRules:     item.TryGetValue("LayoutRules",     out var lr)  ? lr.S  : string.Empty,
+            LayoutRules:     lr,
             HasCutoutImages: item.TryGetValue("HasCutoutImages", out var hc)  && hc.BOOL,
             CutoutPlacement: item.TryGetValue("CutoutPlacement", out var cp) && !string.IsNullOrEmpty(cp.S) ? cp.S : null
         );

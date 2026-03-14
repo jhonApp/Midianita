@@ -6,6 +6,6 @@ namespace Midianita.Workers.ProcessadorArte.Models;
 public record SqsJobPayload(
     [property: JsonPropertyName("JobId")]       string JobId,
     [property: JsonPropertyName("BannerId")]    string BannerId,
-    [property: JsonPropertyName("UserPhotoUrl")] string UserPhotoUrl,
+    [property: JsonPropertyName("ImageUrls")]    List<string> ImageUrls,
     [property: JsonPropertyName("UserText")]    string UserText
 );
