@@ -1,115 +1,84 @@
 using Amazon.Lambda.Core;
+using Midianita.Workers.ProcessadorArte.Models;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using System.IO;
 
 namespace Midianita.Workers.ProcessadorArte.Services;
 
-/// <summary>
-/// Composes the final artwork:
-///   1. Loads the AI-generated background.
-///   2. Overlays the cutout image (if any) according to its placement hint.
-///   3. Renders the user text on top.
-///   4. Returns the result as a PNG byte array.
-/// </summary>
 public sealed class ImageCompositionService : IImageCompositionService
 {
-    public async Task<byte[]> ComposeFinalArtefactAsync(
-        byte[] backgroundBytes,
-        byte[]? cutoutBytes,
-        string? cutoutPlacement,
-        string userText,
-        ILambdaLogger logger)
+    private readonly FontCollection _fonts;
+    private readonly FontFamily _mainFont;
+
+    public ImageCompositionService()
     {
-        logger.LogInformation($"[ImageCompositionService] 🖼️  Composing image. HasCutout: {cutoutBytes is not null}, Placement: {cutoutPlacement ?? "none"}");
-
-        using var background = Image.Load<Rgba32>(backgroundBytes);
-        int bgWidth  = background.Width;
-        int bgHeight = background.Height;
-
-        // ── Overlay cutout if present ──────────────────────────────────────────
-        if (cutoutBytes is not null && cutoutBytes.Length > 0)
+        _fonts = new FontCollection();
+        try
         {
-            using var cutout = Image.Load<Rgba32>(cutoutBytes);
-
-            // Scale cutout to at most 50% of background height, keeping aspect ratio
-            int targetHeight = bgHeight / 2;
-            int targetWidth  = (int)((double)cutout.Width / cutout.Height * targetHeight);
-            cutout.Mutate(x => x.Resize(targetWidth, targetHeight));
-
-            var position = ResolvePlacement(cutoutPlacement, bgWidth, bgHeight, targetWidth, targetHeight);
-
-            background.Mutate(ctx => ctx.DrawImage(cutout, position, opacity: 1f));
-
-            logger.LogInformation($"[ImageCompositionService] ✅ Cutout overlaid at {position}");
+            _mainFont = SystemFonts.Get("Arial");
         }
-
-        // ── Render user text ───────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(userText))
+        catch
         {
-            var fontCollection = new FontCollection();
-            // Use the system/bundled font (Lambda includes basic fonts). Fall back to Arial/DejaVu.
-            FontFamily family = SystemFonts.TryGet("DejaVu Sans", out var found)
-                ? found
-                : SystemFonts.Families.First();
-
-            var font    = family.CreateFont(48, FontStyle.Bold);
-            var options = new RichTextOptions(font)
-            {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment   = VerticalAlignment.Bottom,
-                Origin              = new System.Numerics.Vector2(bgWidth / 2f, bgHeight - 60f),
-                WrappingLength      = bgWidth - 80f
-            };
-
-            // Draw a subtle drop-shadow first, then the main white text
-            background.Mutate(ctx =>
-            {
-                // 1. Salva a posição original
-                var originalOrigin = options.Origin;
-
-                // 2. Desloca a origem em +2 pixels (para a sombra)
-                options.Origin = new System.Numerics.Vector2(originalOrigin.X + 2, originalOrigin.Y + 2);
-                ctx.DrawText(options, userText, Color.Black.WithAlpha(0.6f));
-
-                // 3. Restaura a posição original (para o texto principal)
-                options.Origin = originalOrigin;
-                ctx.DrawText(options, userText, Color.White);
-            });
-
-            logger.LogInformation($"[ImageCompositionService] ✅ Text rendered: \"{userText[..Math.Min(userText.Length, 40)]}...\"");
+            _mainFont = SystemFonts.Families.FirstOrDefault();
         }
-
-        // ── Encode to PNG ──────────────────────────────────────────────────────
-        using var output = new MemoryStream();
-        await background.SaveAsync(output, new PngEncoder());
-        var bytes = output.ToArray();
-
-        logger.LogInformation($"[ImageCompositionService] ✅ Final PNG encoded — {bytes.Length} bytes");
-        return bytes;
     }
 
-    /// <summary>
-    /// Translates a placement hint (e.g. "bottom-right, large scale") into a pixel Point.
-    /// </summary>
-    private static Point ResolvePlacement(string? hint, int bgW, int bgH, int overlayW, int overlayH)
+    public async Task<byte[]> ApplyTypographyAsync(
+        byte[] aiGeneratedImageBytes, BannerAnalysisResult bannerMetadata, string userText, ILambdaLogger logger)
     {
-        if (string.IsNullOrWhiteSpace(hint))
-            return new Point(bgW - overlayW - 20, bgH - overlayH - 20); // default: bottom-right
+        using var bgImage = await Image.LoadAsync<Rgba32>(new MemoryStream(aiGeneratedImageBytes));
+        DrawUserTypography(bgImage, userText, bannerMetadata.LayoutRules, logger);
+        
+        logger.LogInformation("[ImageCompositionService] 💾 Saving final typography mapped image stream...");
+        using var outStream = new MemoryStream();
+        await bgImage.SaveAsJpegAsync(outStream);
+        return outStream.ToArray();
+    }
 
-        hint = hint.ToLowerInvariant();
+    private void DrawUserTypography(Image<Rgba32> bgImage, string text, LayoutRules rules, ILambdaLogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
 
-        int x = hint.Contains("right")  ? bgW - overlayW - 20
-              : hint.Contains("left")   ? 20
-              : (bgW - overlayW) / 2;   // center
+        logger.LogInformation($"[ImageCompositionService] ✍️ Writing user text: '{text}'");
 
-        int y = hint.Contains("top")    ? 20
-              : hint.Contains("bottom") ? bgH - overlayH - 20
-              : (bgH - overlayH) / 2;   // center (middle)
+        var fontSize = bgImage.Width * 0.08f; 
+        var font = _mainFont.CreateFont(fontSize, FontStyle.Bold);
 
-        return new Point(x, y);
+        var textOptions = new RichTextOptions(font)
+        {
+            Origin = new PointF(0, 0),
+            WrappingLength = bgImage.Width * 0.8f,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var alignment = rules.TextAlign?.ToLowerInvariant();
+        if (alignment == "left") textOptions.HorizontalAlignment = HorizontalAlignment.Left;
+        if (alignment == "right") textOptions.HorizontalAlignment = HorizontalAlignment.Right;
+
+        var txtPlacement = rules.TextPlacement?.ToLowerInvariant() ?? "topcenter";
+        var measuredSize = TextMeasurer.MeasureSize(text, textOptions);
+        
+        var txtX = (bgImage.Width) / 2f; 
+        if (textOptions.HorizontalAlignment == HorizontalAlignment.Left) txtX = bgImage.Width * 0.1f;
+        if (textOptions.HorizontalAlignment == HorizontalAlignment.Right) txtX = bgImage.Width * 0.9f;
+
+        var txtY = bgImage.Height * 0.1f; 
+        if (txtPlacement.Contains("bottom"))
+            txtY = bgImage.Height - measuredSize.Height - (bgImage.Height * 0.1f);
+
+        textOptions.Origin = new PointF(txtX, txtY);
+
+        var shadowOptions = new RichTextOptions(font)
+        {
+            Origin = new PointF(txtX + 4, txtY + 4),
+            WrappingLength = textOptions.WrappingLength,
+            HorizontalAlignment = textOptions.HorizontalAlignment
+        };
+        bgImage.Mutate(x => x.DrawText(shadowOptions, text, Color.Black.WithAlpha(0.6f)));
+        bgImage.Mutate(x => x.DrawText(textOptions, text, Color.White));
     }
 }

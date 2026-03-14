@@ -30,8 +30,8 @@ public class Function
         services.AddSingleton<IAmazonS3,       AmazonS3Client>();
         services.AddSingleton<IAmazonDynamoDB,  AmazonDynamoDBClient>();
 
-        // Named HttpClient for OpenAI
-        services.AddHttpClient("OpenAI", client =>
+        // Named HttpClient for Anthropic
+        services.AddHttpClient("Anthropic", client =>
         {
             client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
@@ -41,8 +41,8 @@ public class Function
         services.AddTransient<IImageStorageService, S3ImageService>();
         services.AddTransient<IBannerRepository,    DynamoDbBannerRepository>();
         services.AddTransient<IVisionApiService>(provider =>
-            new OpenAiVisionService(
-                provider.GetRequiredService<IHttpClientFactory>().CreateClient("OpenAI")));
+            new AnthropicVisionService(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient("Anthropic")));
 
         var provider         = services.BuildServiceProvider();
         _imageStorageService = provider.GetRequiredService<IImageStorageService>();
