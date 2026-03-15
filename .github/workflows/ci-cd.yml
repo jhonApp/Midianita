@@ -16,6 +16,7 @@ env:
   SOLUTION_PATH: "./Midianita.sln"
   IAC_PROJECT_PATH: "./Midianita.Infrastructure.IaC"
   LAMBDA_PUBLISH_DIR: "./lambda-publish" # Pasta temporária para os binários
+  AWS_REGION: us-east-1 # Define a região padrão aqui
 
 jobs:
   # =========================================================
@@ -67,10 +68,12 @@ jobs:
             exit 1
           fi
 
-      # 8. NOVO PASSO: Publish (Gerar binários finais para o Lambda)
-      # Precisamos gerar os arquivos finais em uma pasta específica para enviar pro deploy
-      - name: Publish Lambda Artifacts
-        run: dotnet publish ./Workers/Midianita.Workers.AnalisadorBanner/Midianita.Workers.AnalisadorBanner.csproj -c Release -r linux-x64 --self-contained false -o ${{ env.LAMBDA_PUBLISH_DIR }}
+      # 8. NOVO PASSO: Publish (Gerar binários finais para as Lambdas)
+      - name: Publish AnalisadorBanner
+        run: dotnet publish ./Workers/Midianita.Workers.AnalisadorBanner/Midianita.Workers.AnalisadorBanner.csproj -c Release -r linux-x64 --self-contained false -o ${{ env.LAMBDA_PUBLISH_DIR }}/AnalisadorBanner
+
+      - name: Publish ProcessadorArte
+        run: dotnet publish ./Workers/Midianita.Workers.ProcessadorArte/Midianita.Workers.ProcessadorArte.csproj -c Release -r linux-x64 --self-contained false -o ${{ env.LAMBDA_PUBLISH_DIR }}/ProcessadorArte
 
       # 9. NOVO PASSO: Upload Artifact
       # Envia a pasta de publish para o GitHub, para o próximo job baixar
@@ -120,7 +123,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: CDK Deploy
         env:

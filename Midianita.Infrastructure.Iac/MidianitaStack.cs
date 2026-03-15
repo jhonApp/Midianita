@@ -1,5 +1,7 @@
 using Amazon.CDK;
 using Amazon.CDK.AWS.DynamoDB;
+using Amazon.CDK.AWS.Lambda;
+using Amazon.CDK.AWS.Lambda.EventSources;
 using Amazon.CDK.AWS.S3;
 using Amazon.CDK.AWS.SQS;
 using Constructs;
@@ -60,7 +62,47 @@ namespace Midianita.Infrastructure.IaC
                 }
             });
 
-            // 5. Outputs
+            // 5. Lambdas
+            var lambdaBinaryPath = System.Environment.GetEnvironmentVariable("LAMBDA_BINARY_PATH") ?? "../lambda-publish";
+
+            var analisadorLambda = new Amazon.CDK.AWS.Lambda.Function(this, "AnalisadorBannerFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+            {
+                Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
+                Handler = "Midianita.Workers.AnalisadorBanner::Midianita.Workers.AnalisadorBanner.Function::FunctionHandler",
+                Code = Amazon.CDK.AWS.Lambda.Code.FromAsset($"{lambdaBinaryPath}/AnalisadorBanner"),
+                MemorySize = 256,
+                Timeout = Duration.Seconds(60),
+                Environment = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    { "DESIGNS_TABLE", designsTable.TableName },
+                    { "ASSETS_BUCKET", assetsBucket.BucketName }
+                }
+            });
+
+            var processadorLambda = new Amazon.CDK.AWS.Lambda.Function(this, "ProcessadorArteFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+            {
+                Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
+                Handler = "Midianita.Workers.ProcessadorArte::Midianita.Workers.ProcessadorArte.Function::FunctionHandler",
+                Code = Amazon.CDK.AWS.Lambda.Code.FromAsset($"{lambdaBinaryPath}/ProcessadorArte"),
+                MemorySize = 512,
+                Timeout = Duration.Seconds(30),
+                Environment = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    { "DESIGNS_TABLE", designsTable.TableName },
+                    { "ASSETS_BUCKET", assetsBucket.BucketName }
+                }
+            });
+
+            // 6. Permissions & Event Sources
+            designsTable.GrantReadWriteData(analisadorLambda);
+            designsTable.GrantReadWriteData(processadorLambda);
+            assetsBucket.GrantReadWrite(analisadorLambda);
+            assetsBucket.GrantReadWrite(processadorLambda);
+
+            analisadorLambda.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.SqsEventSource(auditQueue));
+            processadorLambda.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.SqsEventSource(auditQueue));
+
+            // 7. Outputs
             new CfnOutput(this, "Region", new CfnOutputProps { Value = this.Region });
             new CfnOutput(this, "QueueUrl", new CfnOutputProps { Value = auditQueue.QueueUrl });
             new CfnOutput(this, "S3BucketName", new CfnOutputProps { Value = assetsBucket.BucketName });
