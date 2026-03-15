@@ -118,6 +118,11 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Debug Secret Presence
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then echo "❌ AWS_ACCESS_KEY_ID is MISSING"; else echo "✅ AWS_ACCESS_KEY_ID is present"; fi
+          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then echo "❌ AWS_SECRET_ACCESS_KEY is MISSING"; else echo "✅ AWS_SECRET_ACCESS_KEY is present"; fi
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
