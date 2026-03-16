@@ -42,7 +42,7 @@ namespace Midianita.Infrastructure.IaC
             var auditQueue = new Queue(this, "AuditQueue", new QueueProps
             {
                 QueueName = "Midianita_Dev_AuditQueue",
-                VisibilityTimeout = Duration.Seconds(90)
+                VisibilityTimeout = Duration.Seconds(180)
             });
 
             // 4. S3 Bucket: midianita-dev-assets
