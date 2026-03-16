@@ -42,10 +42,15 @@ public class Function
 
         // Services
         services.AddTransient<IDynamoDbJobRepository,   DynamoDbJobRepository>();
+<<<<<<< HEAD
         services.AddTransient<IImageCompositionService>(provider =>
             new ImageCompositionService(provider.GetRequiredService<ISmartTypographyService>()));
         services.AddTransient<IS3StorageService,        S3StorageService>();
         services.AddSingleton<ISmartTypographyService,  SmartTypographyService>();
+=======
+        services.AddTransient<IImageCompositionService, ImageCompositionService>();
+        services.AddTransient<IS3StorageService,        S3StorageService>();
+>>>>>>> master
         services.AddTransient<IFalApiService>(provider =>
             new FalApiService(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient("AI")));

@@ -26,9 +26,12 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
 
     <!-- Imaging -->
+<<<<<<< HEAD
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <!-- Native assets for the Lambda Linux x64 environment -->
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.8" />
+=======
+>>>>>>> master
 
     <!-- Google Cloud Vertex AI (Imagen 3) -->
     <PackageReference Include="SixLabors.Fonts" Version="2.1.3" />
