@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Midianita.Aplication.Interface;
 using Midianita.Aplication.ViewModel;
 using Midianita.Core.Entities;
@@ -10,13 +12,25 @@ namespace Midianita.Aplication.Service
     {
         private readonly IDesignRepository _designRepository;
         private readonly IAuditPublisher _auditPublisher;
+        private readonly IQueuePublisher _queuePublisher;
+        private readonly IConfiguration _configuration;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<DesignsService> _logger;
 
-        public DesignsService(IDesignRepository designRepository, IAuditPublisher auditPublisher, IHttpContextAccessor httpContextAccessor)
+        public DesignsService(
+            IDesignRepository designRepository,
+            IAuditPublisher auditPublisher,
+            IQueuePublisher queuePublisher,
+            IConfiguration configuration,
+            IHttpContextAccessor httpContextAccessor,
+            ILogger<DesignsService> logger)
         {
             _designRepository = designRepository;
             _auditPublisher = auditPublisher;
+            _queuePublisher = queuePublisher;
+            _configuration = configuration;
             _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
         }
 
         public async Task<ResultOperation> CreateAsync(RequestDesign request)
@@ -55,9 +69,32 @@ namespace Midianita.Aplication.Service
             }
         }
 
-        public Task DeleteAsync(string id)
+        /// <inheritdoc />
+        public async Task<bool> DeleteAsync(string id)
         {
-            throw new NotImplementedException();
+            var design = await _designRepository.GetByIdAsync(id);
+            if (design == null) return false;
+
+            design.Status = "DELETED";
+            await _designRepository.UpdateAsync(design);
+
+            if (!string.IsNullOrEmpty(design.ImageUrl))
+            {
+                try
+                {
+                    var uri = new Uri(design.ImageUrl);
+                    var s3Key = uri.AbsolutePath.TrimStart('/');
+                    var cleanupMessage = new { s3Key };
+                    var queueUrl = _configuration["AWS:CleanupQueueUrl"];
+                    await _queuePublisher.PublishAsync(cleanupMessage, queueUrl);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Falha ao enfileirar limpeza S3 para o Design {Id}. O arquivo pode ficar órfão.", id);
+                }
+            }
+
+            return true;
         }
 
         public Task<IEnumerable<Design>> GetAllAsync()

@@ -40,5 +40,12 @@ namespace Midianita.API.Controllers
 
             return Ok(design);
         }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(string id)
+        {
+            var deleted = await _designsService.DeleteAsync(id);
+            return deleted ? NoContent() : NotFound();
+        }
     }
 }

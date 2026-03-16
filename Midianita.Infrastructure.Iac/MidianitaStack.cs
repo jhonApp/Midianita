@@ -85,7 +85,7 @@ namespace Midianita.Infrastructure.IaC
                 Handler = "Midianita.Workers.ProcessadorArte::Midianita.Workers.ProcessadorArte.Function::FunctionHandler",
                 Code = Amazon.CDK.AWS.Lambda.Code.FromAsset($"{lambdaBinaryPath}/ProcessadorArte"),
                 MemorySize = 512,
-                Timeout = Duration.Seconds(30),
+                Timeout = Duration.Seconds(120), // Must be >= SQS VisibilityTimeout (90s) for AI workloads
                 Environment = new System.Collections.Generic.Dictionary<string, string>
                 {
                     { "DESIGNS_TABLE", designsTable.TableName },
@@ -99,8 +99,15 @@ namespace Midianita.Infrastructure.IaC
             assetsBucket.GrantReadWrite(analisadorLambda);
             assetsBucket.GrantReadWrite(processadorLambda);
 
-            analisadorLambda.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.SqsEventSource(auditQueue));
-            processadorLambda.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.SqsEventSource(auditQueue));
+            // AnalisadorBanner: default batching is fine (lightweight analysis)
+            analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
+
+            // ProcessadorArte: BatchSize=1 prevents parallel heavy AI jobs on the same instance;
+            // CDK automatically grants ReceiveMessage + DeleteMessage + GetQueueAttributes IAM perms.
+            processadorLambda.AddEventSource(new SqsEventSource(auditQueue, new SqsEventSourceProps
+            {
+                BatchSize = 1
+            }));
 
             // 7. Outputs
             new CfnOutput(this, "Region", new CfnOutputProps { Value = this.Region });

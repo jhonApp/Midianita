@@ -1,4 +1,4 @@
-﻿using Midianita.Aplication.ViewModel;
+using Midianita.Aplication.ViewModel;
 using Midianita.Core.Entities;
 
 namespace Midianita.Aplication.Interface
@@ -9,6 +9,6 @@ namespace Midianita.Aplication.Interface
         Task<Design?> GetByIdAsync(string id);
         Task<IEnumerable<Design>> GetAllAsync();
         Task UpdateAsync(Design design);
-        Task DeleteAsync(string id);
+        Task<bool> DeleteAsync(string id);
     }
 }
