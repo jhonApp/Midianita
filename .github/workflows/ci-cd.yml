@@ -14,7 +14,7 @@ on:
 env:
   DOTNET_VERSION: "8.0.x"
   SOLUTION_PATH: "./Midianita.sln"
-  IAC_PROJECT_PATH: "./Midianita.Infrastructure.IaC"
+  IAC_PROJECT_PATH: "./Midianita.Infrastructure.Iac"
   LAMBDA_PUBLISH_DIR: "./lambda-publish" # Pasta temporária para os binários
   AWS_REGION: us-east-1 # Define a região padrão aqui
 
@@ -117,6 +117,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Debug Secret Presence
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then echo "❌ AWS_ACCESS_KEY_ID is MISSING"; else echo "✅ AWS_ACCESS_KEY_ID is present"; fi
+          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then echo "❌ AWS_SECRET_ACCESS_KEY is MISSING"; else echo "✅ AWS_SECRET_ACCESS_KEY is present"; fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
