@@ -1,5 +1,7 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Midianita.Aplication.Service;
 using Midianita.Core.Entities;
 using Midianita.Core.Interfaces;
@@ -12,19 +14,28 @@ namespace Midianita.Test
     {
         private readonly Mock<IDesignRepository> _designRepositoryMock;
         private readonly Mock<IAuditPublisher> _auditPublisherMock;
+        private readonly Mock<IQueuePublisher> _queuePublisherMock;
+        private readonly Mock<IConfiguration> _configurationMock;
         private readonly Mock<IHttpContextAccessor> _httpContextAccessorMock;
+        private readonly Mock<ILogger<DesignsService>> _loggerMock;
         private readonly DesignsService _service;
 
         public DesignServiceTests()
         {
-            _designRepositoryMock = new Mock<IDesignRepository>();
-            _auditPublisherMock = new Mock<IAuditPublisher>();
+            _designRepositoryMock   = new Mock<IDesignRepository>();
+            _auditPublisherMock     = new Mock<IAuditPublisher>();
+            _queuePublisherMock     = new Mock<IQueuePublisher>();
+            _configurationMock      = new Mock<IConfiguration>();
             _httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+            _loggerMock             = new Mock<ILogger<DesignsService>>();
 
             _service = new DesignsService(
                 _designRepositoryMock.Object,
                 _auditPublisherMock.Object,
-                _httpContextAccessorMock.Object
+                _queuePublisherMock.Object,
+                _configurationMock.Object,
+                _httpContextAccessorMock.Object,
+                _loggerMock.Object
             );
         }
 
