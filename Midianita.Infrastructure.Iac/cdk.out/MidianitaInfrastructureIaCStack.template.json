@@ -78,7 +78,7 @@
    "Type": "AWS::SQS::Queue",
    "Properties": {
     "QueueName": "Midianita_Dev_AuditQueue",
-    "VisibilityTimeout": 30
+    "VisibilityTimeout": 90
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete",
@@ -229,7 +229,7 @@
    "Properties": {
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-633574826164-us-east-1",
-     "S3Key": "b7f33614a69548d6bafe224d751a7ef238cde19097415e553fe8b63a4c8fd8a6.zip"
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -240,7 +240,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs18.x",
+    "Runtime": "nodejs20.x",
     "Description": {
      "Fn::Join": [
       "",
@@ -259,14 +259,417 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MidianitaInfrastructureIaCStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
-    "aws:asset:path": "asset.b7f33614a69548d6bafe224d751a7ef238cde19097415e553fe8b63a4c8fd8a6",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
     "aws:asset:property": "Code"
+   }
+  },
+  "AnalisadorBannerFunctionServiceRole182BE8EF": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/ServiceRole/Resource"
+   }
+  },
+  "AnalisadorBannerFunctionServiceRoleDefaultPolicy18FE9880": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "DesignsTableBF64AC56",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "DesignsTableBF64AC56",
+             "Arn"
+            ]
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "s3:Abort*",
+        "s3:DeleteObject*",
+        "s3:GetBucket*",
+        "s3:GetObject*",
+        "s3:List*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "AssetsBucket5CB76180",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "AssetsBucket5CB76180",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "sqs:ChangeMessageVisibility",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:ReceiveMessage"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "AuditQueue1D3C234B",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "AnalisadorBannerFunctionServiceRoleDefaultPolicy18FE9880",
+    "Roles": [
+     {
+      "Ref": "AnalisadorBannerFunctionServiceRole182BE8EF"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "AnalisadorBannerFunctionD250AEEB": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-633574826164-us-east-1",
+     "S3Key": "1ebc9d3ac2033816c4abb63e4afd69d350b4aba8704cc9236b82ea520b74f4b0.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "DESIGNS_TABLE": {
+       "Ref": "DesignsTableBF64AC56"
+      },
+      "ASSETS_BUCKET": {
+       "Ref": "AssetsBucket5CB76180"
+      }
+     }
+    },
+    "Handler": "Midianita.Workers.AnalisadorBanner::Midianita.Workers.AnalisadorBanner.Function::FunctionHandler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "AnalisadorBannerFunctionServiceRole182BE8EF",
+      "Arn"
+     ]
+    },
+    "Runtime": "dotnet8",
+    "Timeout": 60
+   },
+   "DependsOn": [
+    "AnalisadorBannerFunctionServiceRoleDefaultPolicy18FE9880",
+    "AnalisadorBannerFunctionServiceRole182BE8EF"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/Resource",
+    "aws:asset:path": "asset.1ebc9d3ac2033816c4abb63e4afd69d350b4aba8704cc9236b82ea520b74f4b0",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AnalisadorBannerFunctionSqsEventSourceMidianitaInfrastructureIaCStackAuditQueue0D9D3E2394B63C89": {
+   "Type": "AWS::Lambda::EventSourceMapping",
+   "Properties": {
+    "EventSourceArn": {
+     "Fn::GetAtt": [
+      "AuditQueue1D3C234B",
+      "Arn"
+     ]
+    },
+    "FunctionName": {
+     "Ref": "AnalisadorBannerFunctionD250AEEB"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/SqsEventSource:MidianitaInfrastructureIaCStackAuditQueue0D9D3E23/Resource"
+   }
+  },
+  "ProcessadorArteFunctionServiceRole591DC134": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/ProcessadorArteFunction/ServiceRole/Resource"
+   }
+  },
+  "ProcessadorArteFunctionServiceRoleDefaultPolicy0C7E8F8C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "DesignsTableBF64AC56",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "DesignsTableBF64AC56",
+             "Arn"
+            ]
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "s3:Abort*",
+        "s3:DeleteObject*",
+        "s3:GetBucket*",
+        "s3:GetObject*",
+        "s3:List*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "AssetsBucket5CB76180",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "AssetsBucket5CB76180",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "sqs:ChangeMessageVisibility",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:ReceiveMessage"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "AuditQueue1D3C234B",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ProcessadorArteFunctionServiceRoleDefaultPolicy0C7E8F8C",
+    "Roles": [
+     {
+      "Ref": "ProcessadorArteFunctionServiceRole591DC134"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/ProcessadorArteFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ProcessadorArteFunctionEE323EF8": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-633574826164-us-east-1",
+     "S3Key": "1ebc9d3ac2033816c4abb63e4afd69d350b4aba8704cc9236b82ea520b74f4b0.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "DESIGNS_TABLE": {
+       "Ref": "DesignsTableBF64AC56"
+      },
+      "ASSETS_BUCKET": {
+       "Ref": "AssetsBucket5CB76180"
+      }
+     }
+    },
+    "Handler": "Midianita.Workers.ProcessadorArte::Midianita.Workers.ProcessadorArte.Function::FunctionHandler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "ProcessadorArteFunctionServiceRole591DC134",
+      "Arn"
+     ]
+    },
+    "Runtime": "dotnet8",
+    "Timeout": 120
+   },
+   "DependsOn": [
+    "ProcessadorArteFunctionServiceRoleDefaultPolicy0C7E8F8C",
+    "ProcessadorArteFunctionServiceRole591DC134"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/ProcessadorArteFunction/Resource",
+    "aws:asset:path": "asset.1ebc9d3ac2033816c4abb63e4afd69d350b4aba8704cc9236b82ea520b74f4b0",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "ProcessadorArteFunctionSqsEventSourceMidianitaInfrastructureIaCStackAuditQueue0D9D3E23CA2BF57D": {
+   "Type": "AWS::Lambda::EventSourceMapping",
+   "Properties": {
+    "BatchSize": 1,
+    "EventSourceArn": {
+     "Fn::GetAtt": [
+      "AuditQueue1D3C234B",
+      "Arn"
+     ]
+    },
+    "FunctionName": {
+     "Ref": "ProcessadorArteFunctionEE323EF8"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "MidianitaInfrastructureIaCStack/ProcessadorArteFunction/SqsEventSource:MidianitaInfrastructureIaCStackAuditQueue0D9D3E23/Resource"
    }
   },
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/3WKu27DMAxFvyW7TMvJkqVD6nbNG10DWWYM1bbkiFSCQNC/B7YLZCo43HPP5RIKKUEu1IMyXbdZZyqIJ1a6FepBl1g/repdXUE8q6pDUV7tBEnQjSAeAoZJTpAErSB+Bt0ij/KP5ti7zujnW889JXFEcsFrFGUgdv27Xu0/0967u6nRiw0R8olVY2wz/u8CD4GT+HK8Rc7XIGEpc9h+n0vncTMM2Q96Ms5+3FdQ5AXI8Ra/ZEzmg2XTIxznfAEXGyFAGQEAAA=="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/3WOwW6DMBBEvyV3s0DSSr30kND01jSFqNfIwCZyAZt6baLI8r9XBlQOVeXDvJm1dmcN6WMCyYrfKKrqJmpFCa4wvGoYv9HZ1XfJO1WX4E68bJFlFzmCZ/RN4D4s2jEcwTPagNvZqkETwpkmOapWVPclnv1kdpzQs5Z3Zc3BvVpZGaFk+PzL+wGlKZTVFb7xvhfyGsZ/U88E78Dlamo76nJ7olD0zInQEGyDeJYjjVtYZsmobrEX+c/oqNUgatShOxu3FIZf517v1vTWePaizAFN/AQJrB9iOOxPmdK47fvoEzUJJZ+HDaRxCkl4qy8SItJWGtEh5JP+AD4iiAejAQAA"
    },
    "Metadata": {
     "aws:cdk:path": "MidianitaInfrastructureIaCStack/CDKMetadata/Default"
