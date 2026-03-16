@@ -1,115 +1,103 @@
 using Amazon.Lambda.Core;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using Midianita.Workers.ProcessadorArte.Models;
+using SkiaSharp;
+using System.IO;
 
 namespace Midianita.Workers.ProcessadorArte.Services;
 
-/// <summary>
-/// Composes the final artwork:
-///   1. Loads the AI-generated background.
-///   2. Overlays the cutout image (if any) according to its placement hint.
-///   3. Renders the user text on top.
-///   4. Returns the result as a PNG byte array.
-/// </summary>
 public sealed class ImageCompositionService : IImageCompositionService
 {
-    public async Task<byte[]> ComposeFinalArtefactAsync(
-        byte[] backgroundBytes,
-        byte[]? cutoutBytes,
-        string? cutoutPlacement,
-        string userText,
-        ILambdaLogger logger)
+    // Canvas dimensions — matches the target banner format
+    private const int CanvasWidth  = 1080;
+    private const int CanvasHeight = 1350;
+    private const string DefaultFont = "Arial";
+
+    private readonly ISmartTypographyService _typography;
+
+    public ImageCompositionService(ISmartTypographyService typography)
     {
-        logger.LogInformation($"[ImageCompositionService] 🖼️  Composing image. HasCutout: {cutoutBytes is not null}, Placement: {cutoutPlacement ?? "none"}");
+        _typography = typography;
+    }
 
-        using var background = Image.Load<Rgba32>(backgroundBytes);
-        int bgWidth  = background.Width;
-        int bgHeight = background.Height;
+    public async Task<byte[]> ApplyTypographyAsync(
+        byte[] aiGeneratedImageBytes, BannerAnalysisResult bannerMetadata, string userText, ILambdaLogger logger)
+    {
+        logger.LogInformation("[ImageCompositionService] 🎨 Starting SkiaSharp composition pipeline...");
 
-        // ── Overlay cutout if present ──────────────────────────────────────────
-        if (cutoutBytes is not null && cutoutBytes.Length > 0)
-        {
-            using var cutout = Image.Load<Rgba32>(cutoutBytes);
+        await Task.CompletedTask; // keep async signature for interface compatibility
 
-            // Scale cutout to at most 50% of background height, keeping aspect ratio
-            int targetHeight = bgHeight / 2;
-            int targetWidth  = (int)((double)cutout.Width / cutout.Height * targetHeight);
-            cutout.Mutate(x => x.Resize(targetWidth, targetHeight));
+        using var skData      = SKData.CreateCopy(aiGeneratedImageBytes);
+        using var sourceImage = SKImage.FromEncodedData(skData);
 
-            var position = ResolvePlacement(cutoutPlacement, bgWidth, bgHeight, targetWidth, targetHeight);
+        using var surface = SKSurface.Create(new SKImageInfo(CanvasWidth, CanvasHeight));
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.Black);
 
-            background.Mutate(ctx => ctx.DrawImage(cutout, position, opacity: 1f));
+        // ── 1. Draw AI-generated background (scaled to fill canvas) ──────────
+        using var bgPaint = new SKPaint { FilterQuality = SKFilterQuality.High };
+        var destRect = new SKRect(0, 0, CanvasWidth, CanvasHeight);
+        canvas.DrawImage(sourceImage, destRect, bgPaint);
 
-            logger.LogInformation($"[ImageCompositionService] ✅ Cutout overlaid at {position}");
-        }
-
-        // ── Render user text ───────────────────────────────────────────────────
+        // ── 2. Typography Overlay ─────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(userText))
         {
-            var fontCollection = new FontCollection();
-            // Use the system/bundled font (Lambda includes basic fonts). Fall back to Arial/DejaVu.
-            FontFamily family = SystemFonts.TryGet("DejaVu Sans", out var found)
-                ? found
-                : SystemFonts.Families.First();
+            logger.LogInformation($"[ImageCompositionService] ✍️ Applying typography. Placement: {bannerMetadata.LayoutRules?.TextPlacement}");
 
-            var font    = family.CreateFont(48, FontStyle.Bold);
-            var options = new RichTextOptions(font)
-            {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment   = VerticalAlignment.Bottom,
-                Origin              = new System.Numerics.Vector2(bgWidth / 2f, bgHeight - 60f),
-                WrappingLength      = bgWidth - 80f
-            };
+            var boundingBox = ResolveBoundingBox(bannerMetadata.LayoutRules?.TextPlacement);
+            var textAlign   = ResolveTextAlign(bannerMetadata.LayoutRules?.TextAlign);
 
-            // Draw a subtle drop-shadow first, then the main white text
-            background.Mutate(ctx =>
-            {
-                // 1. Salva a posição original
-                var originalOrigin = options.Origin;
+            // Drop shadow — slightly offset, translucent black
+            _typography.DrawDynamicText(
+                canvas,
+                userText,
+                new SKRect(boundingBox.Left + 4, boundingBox.Top + 4, boundingBox.Right + 4, boundingBox.Bottom + 4),
+                new SKColor(0, 0, 0, 153), // ~60% opacity black
+                DefaultFont,
+                textAlign);
 
-                // 2. Desloca a origem em +2 pixels (para a sombra)
-                options.Origin = new System.Numerics.Vector2(originalOrigin.X + 2, originalOrigin.Y + 2);
-                ctx.DrawText(options, userText, Color.Black.WithAlpha(0.6f));
-
-                // 3. Restaura a posição original (para o texto principal)
-                options.Origin = originalOrigin;
-                ctx.DrawText(options, userText, Color.White);
-            });
-
-            logger.LogInformation($"[ImageCompositionService] ✅ Text rendered: \"{userText[..Math.Min(userText.Length, 40)]}...\"");
+            // Main text — white
+            _typography.DrawDynamicText(
+                canvas,
+                userText,
+                boundingBox,
+                SKColors.White,
+                DefaultFont,
+                textAlign);
         }
 
-        // ── Encode to PNG ──────────────────────────────────────────────────────
-        using var output = new MemoryStream();
-        await background.SaveAsync(output, new PngEncoder());
-        var bytes = output.ToArray();
-
-        logger.LogInformation($"[ImageCompositionService] ✅ Final PNG encoded — {bytes.Length} bytes");
-        return bytes;
+        // ── 3. Encode to JPEG and return ──────────────────────────────────────
+        logger.LogInformation("[ImageCompositionService] 💾 Encoding final image to JPEG...");
+        using var snapshot = surface.Snapshot();
+        using var encoded  = snapshot.Encode(SKEncodedImageFormat.Jpeg, 92);
+        return encoded.ToArray();
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Translates a placement hint (e.g. "bottom-right, large scale") into a pixel Point.
+    /// Maps the AI-provided <paramref name="textPlacement"/> value to a
+    /// pixel-accurate bounding box on the 1080×1350 canvas.
     /// </summary>
-    private static Point ResolvePlacement(string? hint, int bgW, int bgH, int overlayW, int overlayH)
-    {
-        if (string.IsNullOrWhiteSpace(hint))
-            return new Point(bgW - overlayW - 20, bgH - overlayH - 20); // default: bottom-right
+    private static SKRect ResolveBoundingBox(string? textPlacement) =>
+        (textPlacement?.ToLowerInvariant() ?? "topcenter") switch
+        {
+            "topcenter"   or "top"    => new SKRect( 100,   60,  980,  420),
+            "topleft"                 => new SKRect(  50,   50,  800,  400),
+            "topright"                => new SKRect( 280,   50, 1030,  400),
+            "leftcenter"  or "left"   => new SKRect(  50,  400,  500,  950),
+            "rightcenter" or "right"  => new SKRect( 580,  400, 1030,  950),
+            "bottomcenter"or "bottom" => new SKRect( 100, 1000,  980, 1250),
+            "bottomleft"              => new SKRect(  50, 1000,  700, 1250),
+            "bottomright"             => new SKRect( 380, 1000, 1030, 1250),
+            "split"                   => new SKRect( 100,   60,  980,  460), // top strip for split layouts
+            _                         => new SKRect( 100,   60,  980,  420), // default → top
+        };
 
-        hint = hint.ToLowerInvariant();
-
-        int x = hint.Contains("right")  ? bgW - overlayW - 20
-              : hint.Contains("left")   ? 20
-              : (bgW - overlayW) / 2;   // center
-
-        int y = hint.Contains("top")    ? 20
-              : hint.Contains("bottom") ? bgH - overlayH - 20
-              : (bgH - overlayH) / 2;   // center (middle)
-
-        return new Point(x, y);
-    }
+    private static SKTextAlign ResolveTextAlign(string? textAlign) =>
+        (textAlign?.ToLowerInvariant() ?? "center") switch
+        {
+            "left"  => SKTextAlign.Left,
+            "right" => SKTextAlign.Right,
+            _       => SKTextAlign.Center,
+        };
 }

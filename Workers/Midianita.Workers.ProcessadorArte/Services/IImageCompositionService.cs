@@ -1,16 +1,13 @@
 using Amazon.Lambda.Core;
+using Midianita.Workers.ProcessadorArte.Models;
 
 namespace Midianita.Workers.ProcessadorArte.Services;
 
 /// <summary>
-/// Composes the final artwork by overlaying a cutout on a background and rendering text.
+/// Applies final typography overlays.
 /// </summary>
 public interface IImageCompositionService
 {
-    Task<byte[]> ComposeFinalArtefactAsync(
-        byte[] backgroundBytes,
-        byte[]? cutoutBytes,
-        string? cutoutPlacement,
-        string userText,
-        ILambdaLogger logger);
+    Task<byte[]> ApplyTypographyAsync(
+        byte[] aiGeneratedImageBytes, BannerAnalysisResult bannerMetadata, string userText, ILambdaLogger logger);
 }

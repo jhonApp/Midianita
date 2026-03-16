@@ -19,9 +19,9 @@ namespace Midianita.Workers.ProcessadorArte;
 public class Function
 {
     private readonly IDynamoDbJobRepository   _jobRepository;
-    private readonly IAiOrchestratorService   _aiOrchestrator;
     private readonly IImageCompositionService _imageComposer;
     private readonly IS3StorageService        _s3Storage;
+    private readonly IFalApiService           _falApi;
 
     // ── Production constructor ────────────────────────────────────────────────
     public Function()
@@ -42,30 +42,31 @@ public class Function
 
         // Services
         services.AddTransient<IDynamoDbJobRepository,   DynamoDbJobRepository>();
-        services.AddTransient<IImageCompositionService, ImageCompositionService>();
-        services.AddTransient<IS3StorageService,         S3StorageService>();
-        services.AddTransient<IAiOrchestratorService>(provider =>
-            new AiOrchestratorService(
+        services.AddTransient<IImageCompositionService>(provider =>
+            new ImageCompositionService(provider.GetRequiredService<ISmartTypographyService>()));
+        services.AddTransient<IS3StorageService,        S3StorageService>();
+        services.AddSingleton<ISmartTypographyService,  SmartTypographyService>();
+        services.AddTransient<IFalApiService>(provider =>
+            new FalApiService(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient("AI")));
 
         var provider    = services.BuildServiceProvider();
         _jobRepository  = provider.GetRequiredService<IDynamoDbJobRepository>();
-        _aiOrchestrator = provider.GetRequiredService<IAiOrchestratorService>();
         _imageComposer  = provider.GetRequiredService<IImageCompositionService>();
         _s3Storage      = provider.GetRequiredService<IS3StorageService>();
+        _falApi         = provider.GetRequiredService<IFalApiService>();
     }
 
-    // ── Test constructor ──────────────────────────────────────────────────────
     internal Function(
         IDynamoDbJobRepository   jobRepository,
-        IAiOrchestratorService   aiOrchestrator,
         IImageCompositionService imageComposer,
-        IS3StorageService        s3Storage)
+        IS3StorageService        s3Storage,
+        IFalApiService           falApi)
     {
         _jobRepository  = jobRepository;
-        _aiOrchestrator = aiOrchestrator;
         _imageComposer  = imageComposer;
         _s3Storage      = s3Storage;
+        _falApi         = falApi;
     }
 
     // ── Entry Point ───────────────────────────────────────────────────────────
@@ -97,33 +98,45 @@ public class Function
                 var banner = await _jobRepository.GetBannerMetadataAsync(
                     payload.BannerId, context.Logger);
 
-                // ── 4. Parallel AI calls (Task.WhenAll) ───────────────────────
+                // ── 4. MasterPrompt Dynamic Context Orchestration ─────────────────
+                string modifiedMasterPrompt = banner.MasterPrompt;
+                
+                // Safety: If ImageUrls is null or empty, try to fallback/initialize
+                var effectiveImageUrls = payload.ImageUrls ?? new List<string>();
+                if (effectiveImageUrls.Count == 0 && !string.IsNullOrEmpty(record.Body))
+                {
+                    // Attempt to extract legacy UserPhotoUrl if ImageUrls is missing
+                    using var doc = JsonDocument.Parse(record.Body);
+                    if (doc.RootElement.TryGetProperty("UserPhotoUrl", out var prop))
+                    {
+                         effectiveImageUrls.Add(prop.GetString()!);
+                    }
+                }
+
+                if (effectiveImageUrls.Count == 1)
+                {
+                    context.Logger.LogInformation("[ProcessadorArte] ✂️ 1 Image detected. Manipulating MasterPrompt to remove midground Z-1 elements.");
+                    
+                    modifiedMasterPrompt = System.Text.RegularExpressions.Regex.Replace(
+                        modifiedMasterPrompt, 
+                        @"(?i)(Z-1|midground).*?(?=Z-2|Z-3|Foreground|foreground|$)", 
+                        "");
+                        
+                    modifiedMasterPrompt += " CRITICAL: This composition must feature ONLY the single main subject provided in foreground (Z-2). DO NOT generate any other people, background photos, or extra faces in the midground.";
+                }
+
+                // ── 5. Fal.ai Pure Generative AI Composition ──────────────────
                 context.Logger.LogInformation(
-                    $"[ProcessadorArte] 🚀 Starting parallel AI calls. " +
-                    $"RemoveBg: {banner.HasCutoutImages}");
+                    $"[ProcessadorArte] 🎨 Initiating Pure Generative AI via Fal.ai with {effectiveImageUrls.Count} images...");
 
-                var backgroundTask = _aiOrchestrator.GenerateBackgroundAsync(
-                    banner.MasterPrompt, payload.UserText, context.Logger);
+                var aiGeneratedBytes = await _falApi.GenerateImageAsync(
+                    effectiveImageUrls, modifiedMasterPrompt, context.Logger);
 
-                var cutoutTask = banner.HasCutoutImages
-                    ? _aiOrchestrator.RemoveBackgroundAsync(payload.UserPhotoUrl, context.Logger)
-                    : Task.FromResult<byte[]?>(null);
-
-                await Task.WhenAll(backgroundTask, cutoutTask);
-
-                var backgroundBytes = await backgroundTask;
-                var cutoutBytes     = await cutoutTask;
-
+                // ── 5. Apply Final Typography (ImageSharp) ────────────────────
                 context.Logger.LogInformation(
-                    $"[ProcessadorArte] ✅ Both AI tasks completed.");
-
-                // ── 5. Compose final image ────────────────────────────────────
-                var finalImageBytes = await _imageComposer.ComposeFinalArtefactAsync(
-                    backgroundBytes,
-                    cutoutBytes,
-                    banner.CutoutPlacement,
-                    payload.UserText,
-                    context.Logger);
+                    $"[ProcessadorArte] ✍️ Applying Final Typography...");
+                var finalImageBytes = await _imageComposer.ApplyTypographyAsync(
+                    aiGeneratedBytes, banner, payload.UserText, context.Logger);
 
                 // ── 6. Upload to S3 ───────────────────────────────────────────
                 var finalUrl = await _s3Storage.UploadFinalImageAsync(
