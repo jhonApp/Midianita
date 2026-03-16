@@ -136,4 +136,5 @@ jobs:
           LAMBDA_BINARY_PATH: ../${{ env.LAMBDA_PUBLISH_DIR }}
         run: |
           cd ${{ env.IAC_PROJECT_PATH }}
+          cdk bootstrap
           cdk deploy --require-approval never
