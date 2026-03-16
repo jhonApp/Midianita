@@ -1,5 +1,5 @@
 {
-  "version": "34.0.0",
+  "version": "36.0.0",
   "artifacts": {
     "MidianitaInfrastructureIaCStack.assets": {
       "type": "cdk:asset-manifest",
@@ -18,7 +18,7 @@
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::633574826164:role/cdk-hnb659fds-deploy-role-633574826164-us-east-1",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::633574826164:role/cdk-hnb659fds-cfn-exec-role-633574826164-us-east-1",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-633574826164-us-east-1/eafa2c441428a7bd899e1cf43e3a32d5788337be7ade5fdf473440b43420b4aa.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-633574826164-us-east-1/a0a98a98b498e654835a86ef879ca6cc078a748f5c46d102ef06e2380ae8e7b9.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -96,6 +96,54 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AnalisadorBannerFunctionServiceRole182BE8EF"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AnalisadorBannerFunctionServiceRoleDefaultPolicy18FE9880"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AnalisadorBannerFunctionD250AEEB"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/AnalisadorBannerFunction/SqsEventSource:MidianitaInfrastructureIaCStackAuditQueue0D9D3E23/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AnalisadorBannerFunctionSqsEventSourceMidianitaInfrastructureIaCStackAuditQueue0D9D3E2394B63C89"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/ProcessadorArteFunction/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProcessadorArteFunctionServiceRole591DC134"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/ProcessadorArteFunction/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProcessadorArteFunctionServiceRoleDefaultPolicy0C7E8F8C"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/ProcessadorArteFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProcessadorArteFunctionEE323EF8"
+          }
+        ],
+        "/MidianitaInfrastructureIaCStack/ProcessadorArteFunction/SqsEventSource:MidianitaInfrastructureIaCStackAuditQueue0D9D3E23/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProcessadorArteFunctionSqsEventSourceMidianitaInfrastructureIaCStackAuditQueue0D9D3E23CA2BF57D"
           }
         ],
         "/MidianitaInfrastructureIaCStack/Region": [
