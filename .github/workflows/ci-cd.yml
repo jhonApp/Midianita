@@ -14,7 +14,7 @@ on:
 env:
   DOTNET_VERSION: "8.0.x"
   SOLUTION_PATH: "./Midianita.sln"
-  IAC_PROJECT_PATH: "./Midianita.Infrastructure.IaC"
+  IAC_PROJECT_PATH: "./Midianita.Infrastructure.Iac"
   LAMBDA_PUBLISH_DIR: "./lambda-publish" # Pasta temporária para os binários
   AWS_REGION: us-east-1 # Define a região padrão aqui
 
