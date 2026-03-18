@@ -1,4 +1,7 @@
 using Amazon.Lambda.Core;
+using Polly;
+using Polly.Retry;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -12,116 +15,94 @@ public sealed class FalApiService : IFalApiService
     private const string FalApiKeyEnv = "FAL_KEY";
 
     private readonly HttpClient _httpClient;
+    private readonly ITelemetryService _telemetry;
+    private readonly AsyncRetryPolicy _retryPolicy;
 
-    public FalApiService(HttpClient httpClient)
+    public FalApiService(HttpClient httpClient, ITelemetryService telemetry)
     {
         _httpClient = httpClient;
+        _telemetry = telemetry;
+
+        // More aggressive retry for polling and intermediate failures
+        _retryPolicy = Policy
+            .Handle<HttpRequestException>()
+            .OrResult<HttpResponseMessage>(r => (int)r.StatusCode == 429 || (int)r.StatusCode >= 500)
+            .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(1.5, retryAttempt)));
     }
 
-    public async Task<byte[]> GenerateImageAsync(List<string> imageUrls, string masterPrompt, ILambdaLogger logger)
+    public async Task<byte[]> GenerateImageAsync(List<string> imageUrls, string masterPrompt, ILambdaLogger logger, string jobId)
     {
-        logger.LogInformation($"[FalApiService] 🎨 Calling Nano Banana Edit via Queue...");
+        var sw = Stopwatch.StartNew();
+        bool success = false;
+        string? error = null;
 
-        var apiKey = Environment.GetEnvironmentVariable(FalApiKeyEnv)
-            ?? throw new InvalidOperationException($"Environment variable '{FalApiKeyEnv}' is not set.");
-
-        var instructionPrompt = $"Preserve the identity and exact features of the main subjects in this image perfectly. Replace the entire background and environment to match this description: {masterPrompt}";
-
-        var requestBody = new
+        try
         {
-            image_urls = imageUrls.ToArray(),
-            prompt     = instructionPrompt
-        };
+            var apiKey = Environment.GetEnvironmentVariable(FalApiKeyEnv)
+                ?? throw new InvalidOperationException($"Environment variable '{FalApiKeyEnv}' is not set.");
 
-        var jsonOptions = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
-        var json = JsonSerializer.Serialize(requestBody, jsonOptions);
-        var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            var requestBody = new { image_urls = imageUrls.ToArray(), prompt = masterPrompt };
+            var json = JsonSerializer.Serialize(requestBody);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, FalQueueUrl);
-        // Fal expects "Key <FAL_KEY>" 
-        request.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        request.Content = httpContent;
+            // 1. Queue initialization with Polly
+            var response = await _retryPolicy.ExecuteAsync(() => 
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, FalQueueUrl);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+                request.Content = httpContent;
+                return _httpClient.SendAsync(request);
+            });
 
-        var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException($"Fal queue error: {response.StatusCode}");
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            logger.LogError($"[FalApiService] Fal.ai API Queue Error ({response.StatusCode}): {errorContent}");
-            throw new HttpRequestException($"Fal.ai API Error ({response.StatusCode}): {errorContent}");
-        }
+            var queueJson = await response.Content.ReadAsStringAsync();
+            using var queueDoc = JsonDocument.Parse(queueJson);
+            var statusUrl = queueDoc.RootElement.GetProperty("status_url").GetString()!;
+            var responseUrl = queueDoc.RootElement.GetProperty("response_url").GetString()!;
 
-        var queueJson = await response.Content.ReadAsStringAsync();
-        using var queueDoc = JsonDocument.Parse(queueJson);
-        var statusUrl = queueDoc.RootElement.GetProperty("status_url").GetString()!;
-        var responseUrl = queueDoc.RootElement.GetProperty("response_url").GetString()!;
+            // 2. Polling loop with local timeout
+            var pollingCts = new CancellationTokenSource(TimeSpan.FromSeconds(110)); // Total Lambda limit nearby
+            while (!pollingCts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(2000, pollingCts.Token);
 
-        logger.LogInformation($"[FalApiService] ⏳ Job queued. Polling status_url: {statusUrl}");
+                var statusResp = await _retryPolicy.ExecuteAsync(() =>
+                {
+                    using var statusReq = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+                    statusReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+                    return _httpClient.SendAsync(statusReq);
+                });
 
-        // Polling loop
-        while (true)
-        {
-            await Task.Delay(2000); // Poll every 2 seconds
+                var statusStr = await statusResp.Content.ReadAsStringAsync();
+                using var sDoc = JsonDocument.Parse(statusStr);
+                var status = sDoc.RootElement.GetProperty("status").GetString();
 
-            using var statusReq = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-            statusReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+                if (status == "COMPLETED") break;
+                if (status != "IN_PROGRESS" && status != "IN_QUEUE")
+                    throw new InvalidOperationException($"Fal job failed: {status}");
+            }
+
+            // 3. Download results
+            var finalResp = await _httpClient.GetAsync(responseUrl);
+            var finalJson = await finalResp.Content.ReadAsStringAsync();
+            using var fDoc = JsonDocument.Parse(finalJson);
+            var finalImageUrl = fDoc.RootElement.GetProperty("images")[0].GetProperty("url").GetString()!;
             
-            var statusResp = await _httpClient.SendAsync(statusReq);
-            if (!statusResp.IsSuccessStatusCode)
-            {
-                 var errorContent = await statusResp.Content.ReadAsStringAsync();
-                 logger.LogError($"[FalApiService] Fal.ai Status Error ({statusResp.StatusCode}): {errorContent}");
-                 throw new HttpRequestException($"Fal.ai API Error ({statusResp.StatusCode}): {errorContent}");
-            }
-
-            var statusStr = await statusResp.Content.ReadAsStringAsync();
-            using var sDoc = JsonDocument.Parse(statusStr);
-            var status = sDoc.RootElement.GetProperty("status").GetString();
-
-            if (status == "IN_PROGRESS" || status == "IN_QUEUE")
-            {
-                logger.LogInformation($"[FalApiService] ⏳ Status: {status}...");
-                continue;
-            }
-            if (status == "COMPLETED")
-            {
-                logger.LogInformation($"[FalApiService] ✅ Status: COMPLETED. Fetching payload...");
-                break;
-            }
-            else
-            {
-                throw new InvalidOperationException($"Fal job failed or returned unhandled status: {status}");
-            }
+            var bytes = await _httpClient.GetByteArrayAsync(finalImageUrl);
+            success = true;
+            return bytes;
         }
-
-        // Fetch actual response
-        using var respReq = new HttpRequestMessage(HttpMethod.Get, responseUrl);
-        respReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        
-        var finalResp = await _httpClient.SendAsync(respReq);
-        if (!finalResp.IsSuccessStatusCode)
+        catch (Exception ex)
         {
-            var errorContent = await finalResp.Content.ReadAsStringAsync();
-            logger.LogError($"[FalApiService] Fal.ai Fetch Error ({finalResp.StatusCode}): {errorContent}");
-            throw new HttpRequestException($"Fal.ai API Error ({finalResp.StatusCode}): {errorContent}");
+            error = ex.Message;
+            throw;
         }
-
-        var finalJson = await finalResp.Content.ReadAsStringAsync();
-        using var fDoc = JsonDocument.Parse(finalJson);
-        
-        var imagesArray = fDoc.RootElement.GetProperty("images");
-        var finalImageUrl = imagesArray[0].GetProperty("url").GetString()!;
-
-        if (finalImageUrl.StartsWith("data:"))
+        finally
         {
-            var commaIndex = finalImageUrl.IndexOf(',');
-            var b64        = finalImageUrl.Substring(commaIndex + 1);
-            return Convert.FromBase64String(b64);
-        }
-        else
-        {
-            logger.LogInformation($"[FalApiService] 📥 Downloading generation from Fal URL: {finalImageUrl}");
-            return await _httpClient.GetByteArrayAsync(finalImageUrl);
+            sw.Stop();
+            _telemetry.LogGenerationResult(jobId, "fal-ai/nano-banana", sw.ElapsedMilliseconds, success, error);
         }
     }
 }

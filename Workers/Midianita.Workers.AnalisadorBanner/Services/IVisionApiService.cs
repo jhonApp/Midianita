@@ -10,5 +10,6 @@ public interface IVisionApiService
 {
     Task<BannerAnalysisResult> AnalyzeImageAsync(
         string base64Image,
-        ILambdaLogger logger);
+        ILambdaLogger logger,
+        string requestId);
 }

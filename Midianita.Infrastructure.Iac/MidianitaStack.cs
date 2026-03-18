@@ -38,11 +38,23 @@ namespace Midianita.Infrastructure.IaC
                 RemovalPolicy = RemovalPolicy.DESTROY
             });
 
-            // 3. SQS Queue: Midianita_Dev_AuditQueue
+            // 3. SQS Dead Letter Queue: Midianita_Dev_AuditQueue_DLQ
+            var auditDlq = new Queue(this, "AuditQueueDLQ", new QueueProps
+            {
+                QueueName = "Midianita_Dev_AuditQueue_DLQ",
+                RetentionPeriod = Duration.Days(14) // Long life for manual debugging
+            });
+
+            // 3.1. Main SQS Queue with DLQ attached
             var auditQueue = new Queue(this, "AuditQueue", new QueueProps
             {
                 QueueName = "Midianita_Dev_AuditQueue",
-                VisibilityTimeout = Duration.Seconds(180)
+                VisibilityTimeout = Duration.Seconds(180),
+                DeadLetterQueue = new DeadLetterQueue
+                {
+                    MaxReceiveCount = 3,
+                    Queue = auditDlq
+                }
             });
 
             // 4. S3 Bucket: midianita-dev-assets
@@ -112,6 +124,7 @@ namespace Midianita.Infrastructure.IaC
             // 7. Outputs
             new CfnOutput(this, "Region", new CfnOutputProps { Value = this.Region });
             new CfnOutput(this, "QueueUrl", new CfnOutputProps { Value = auditQueue.QueueUrl });
+            new CfnOutput(this, "DLQUrl",   new CfnOutputProps { Value = auditDlq.QueueUrl });
             new CfnOutput(this, "S3BucketName", new CfnOutputProps { Value = assetsBucket.BucketName });
             new CfnOutput(this, "DesignsTableName", new CfnOutputProps { Value = designsTable.TableName });
             new CfnOutput(this, "AuditTableName", new CfnOutputProps { Value = auditTable.TableName });
