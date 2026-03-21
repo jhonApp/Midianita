@@ -6,8 +6,9 @@ namespace Midianita.Core.Interfaces
     /// <summary>
     /// Core/Application Layer: Repository interface for DesignEntity
     /// </summary>
-    public interface IDesignRepository
+    public interface IDesignRepository : IBaseRepository<Design>
     {
+        public new Task CreateAsync(Design design);
         Task AddAsync(DesignEntity design);
     }
 }

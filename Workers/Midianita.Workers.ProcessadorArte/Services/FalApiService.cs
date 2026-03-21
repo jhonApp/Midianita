@@ -16,7 +16,7 @@ public sealed class FalApiService : IFalApiService
 
     private readonly HttpClient _httpClient;
     private readonly ITelemetryService _telemetry;
-    private readonly AsyncRetryPolicy _retryPolicy;
+    private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
 
     public FalApiService(HttpClient httpClient, ITelemetryService telemetry)
     {

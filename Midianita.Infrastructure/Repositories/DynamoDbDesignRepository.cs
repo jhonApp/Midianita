@@ -41,5 +41,18 @@ namespace Midianita.Infrastructure.Repositories
         {
             await _context.DeleteAsync<Design>(id, new DynamoDBOperationConfig { OverrideTableName = _tableName });
         }
+
+        public async Task AddAsync(DesignEntity design)
+        {
+            var entity = new Design 
+            {
+                Id = design.Id.ToString(),
+                Name = design.Title,
+                Status = design.Status,
+                CreatedAt = design.CreatedAt,
+                UserId = string.IsNullOrEmpty(design.UserId) ? "system" : design.UserId
+            };
+            await _context.SaveAsync(entity, new DynamoDBOperationConfig { OverrideTableName = _tableName });
+        }
     }
 }
