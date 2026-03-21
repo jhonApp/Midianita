@@ -57,6 +57,26 @@ namespace Midianita.Infrastructure.IaC
                 }
             });
 
+            // -----------------------------------------------------------
+            // NOVO: (1, 2, 3) Filas SQS para Geração de Imagem
+            // -----------------------------------------------------------
+            var imageGenerationDlq = new Queue(this, "ImageGenerationDLQ", new QueueProps
+            {
+                QueueName = "Midianita_Dev_ImageGenerationQueue_DLQ",
+                RetentionPeriod = Duration.Days(14)
+            });
+
+            var imageGenerationQueue = new Queue(this, "ImageGenerationQueue", new QueueProps
+            {
+                QueueName = "Midianita_Dev_ImageGenerationQueue",
+                VisibilityTimeout = Duration.Seconds(180),
+                DeadLetterQueue = new DeadLetterQueue
+                {
+                    MaxReceiveCount = 3,
+                    Queue = imageGenerationDlq
+                }
+            });
+
             // 4. S3 Bucket: midianita-dev-assets
             var assetsBucket = new Bucket(this, "AssetsBucket", new BucketProps
             {
@@ -97,7 +117,8 @@ namespace Midianita.Infrastructure.IaC
                 Handler = "Midianita.Workers.ProcessadorArte::Midianita.Workers.ProcessadorArte.Function::FunctionHandler",
                 Code = Amazon.CDK.AWS.Lambda.Code.FromAsset($"{lambdaBinaryPath}/ProcessadorArte"),
                 MemorySize = 512,
-                Timeout = Duration.Seconds(120), // Must be >= SQS VisibilityTimeout (90s) for AI workloads
+                // IMPORTANTE: Timeout da Lambda deve ser >= VisibilityTimeout da fila (180s)
+                Timeout = Duration.Seconds(240), 
                 Environment = new System.Collections.Generic.Dictionary<string, string>
                 {
                     { "DESIGNS_TABLE", designsTable.TableName },
@@ -115,8 +136,8 @@ namespace Midianita.Infrastructure.IaC
             analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
 
             // ProcessadorArte: BatchSize=1 prevents parallel heavy AI jobs on the same instance;
-            // CDK automatically grants ReceiveMessage + DeleteMessage + GetQueueAttributes IAM perms.
-            processadorLambda.AddEventSource(new SqsEventSource(auditQueue, new SqsEventSourceProps
+            // NOVO: (4) Alterado de auditQueue para imageGenerationQueue
+            processadorLambda.AddEventSource(new SqsEventSource(imageGenerationQueue, new SqsEventSourceProps
             {
                 BatchSize = 1
             }));
@@ -125,6 +146,8 @@ namespace Midianita.Infrastructure.IaC
             new CfnOutput(this, "Region", new CfnOutputProps { Value = this.Region });
             new CfnOutput(this, "QueueUrl", new CfnOutputProps { Value = auditQueue.QueueUrl });
             new CfnOutput(this, "DLQUrl",   new CfnOutputProps { Value = auditDlq.QueueUrl });
+            // NOVO: (5) Output da Fila Principal de Geração de Imagem
+            new CfnOutput(this, "ImageGenerationQueueUrl", new CfnOutputProps { Value = imageGenerationQueue.QueueUrl });
             new CfnOutput(this, "S3BucketName", new CfnOutputProps { Value = assetsBucket.BucketName });
             new CfnOutput(this, "DesignsTableName", new CfnOutputProps { Value = designsTable.TableName });
             new CfnOutput(this, "AuditTableName", new CfnOutputProps { Value = auditTable.TableName });
