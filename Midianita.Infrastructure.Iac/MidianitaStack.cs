@@ -117,8 +117,8 @@ namespace Midianita.Infrastructure.IaC
                 Handler = "Midianita.Workers.ProcessadorArte::Midianita.Workers.ProcessadorArte.Function::FunctionHandler",
                 Code = Amazon.CDK.AWS.Lambda.Code.FromAsset($"{lambdaBinaryPath}/ProcessadorArte"),
                 MemorySize = 512,
-                // IMPORTANTE: Timeout da Lambda deve ser >= VisibilityTimeout da fila (180s)
-                Timeout = Duration.Seconds(240), 
+                // CORREÇÃO: O VisibilityTimeout da fila (180s) PRECISA SER MAIOR OU IGUAL ao Timeout da Lambda.
+                Timeout = Duration.Seconds(180),  
                 Environment = new System.Collections.Generic.Dictionary<string, string>
                 {
                     { "DESIGNS_TABLE", designsTable.TableName },
