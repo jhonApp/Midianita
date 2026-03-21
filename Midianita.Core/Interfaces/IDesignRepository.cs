@@ -1,9 +1,13 @@
-﻿using Midianita.Core.Entities;
+using System.Threading.Tasks;
+using Midianita.Core.Entities;
 
 namespace Midianita.Core.Interfaces
 {
-    public interface IDesignRepository : IBaseRepository<Design>
+    /// <summary>
+    /// Core/Application Layer: Repository interface for DesignEntity
+    /// </summary>
+    public interface IDesignRepository
     {
-        public new Task CreateAsync(Design design);
+        Task AddAsync(DesignEntity design);
     }
 }
