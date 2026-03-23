@@ -131,8 +131,13 @@ namespace Midianita.Infrastructure.IaC
             // 6. Permissions & Event Sources
             designsTable.GrantReadWriteData(analisadorLambda);
             designsTable.GrantReadWriteData(processadorLambda);
+            
             assetsBucket.GrantReadWrite(analisadorLambda);
+            
+            // Garantir permissão de leitura/escrita no Bucket de Assets para a Lambda Processador
             assetsBucket.GrantReadWrite(processadorLambda);
+            // Injetar variável de ambiente informando em qual bucket salvar a imagem em JPEG final
+            processadorLambda.AddEnvironment("OUTPUT_S3_BUCKET", assetsBucket.BucketName);
 
             // NOVO: Importando a tabela Midianita_Dev_Job externa e dando permissão + variável de ambiente
             var jobTable = Table.FromTableName(this, "JobTable", "Midianita_Dev_Job");
