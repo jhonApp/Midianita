@@ -17,6 +17,7 @@ public class Function
     private readonly IImageCompositionService _imageComposer;
     private readonly IS3StorageService        _s3Storage;
     private readonly IFalApiService           _falApi;
+    private readonly IAmazonS3                _s3Client;
 
     public Function()
     {
@@ -45,6 +46,7 @@ public class Function
         _imageComposer  = provider.GetRequiredService<IImageCompositionService>();
         _s3Storage      = provider.GetRequiredService<IS3StorageService>();
         _falApi         = provider.GetRequiredService<IFalApiService>();
+        _s3Client       = provider.GetRequiredService<IAmazonS3>();
     }
 
     public async Task FunctionHandler(SQSEvent sqsEvent, ILambdaContext context)
@@ -61,10 +63,18 @@ public class Function
                 var banner = await _jobRepository.GetBannerMetadataAsync(payload.BannerId, context.Logger);
 
                 // Append the ReferenceImageUrl if present
-                var imageUrls = payload.ImageUrls ?? new List<string>();
+                var imageUrls = new List<string>();
+                if (payload.ImageUrls != null)
+                {
+                    foreach (var url in payload.ImageUrls)
+                    {
+                        imageUrls.Add(GeneratePreSignedUrl(url));
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(payload.ReferenceImageUrl))
                 {
-                    imageUrls.Add(payload.ReferenceImageUrl);
+                    imageUrls.Add(GeneratePreSignedUrl(payload.ReferenceImageUrl));
                 }
 
                 // Pass JobId to Fal
@@ -82,6 +92,33 @@ public class Function
                 context.Logger.LogError($"[ProcessadorArte] Fatal Error: {ex.Message}");
                 throw; // Retry SQS
             }
+        }
+    }
+
+    private string GeneratePreSignedUrl(string s3Url)
+    {
+        if (string.IsNullOrEmpty(s3Url) || !s3Url.Contains(".s3."))
+            return s3Url;
+
+        try
+        {
+            var uri = new Uri(s3Url);
+            var hostParts = uri.Host.Split('.');
+            var bucketName = hostParts[0];
+            var objectKey = uri.AbsolutePath.TrimStart('/');
+
+            var request = new Amazon.S3.Model.GetPreSignedUrlRequest
+            {
+                BucketName = bucketName,
+                Key = objectKey,
+                Expires = DateTime.UtcNow.AddMinutes(15)
+            };
+
+            return _s3Client.GetPreSignedURL(request);
+        }
+        catch (Exception)
+        {
+            return s3Url; // Em caso de falha silenciosa, retornamos a URL original como fallback
         }
     }
 }
