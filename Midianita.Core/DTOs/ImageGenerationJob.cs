@@ -1,4 +1,4 @@
-﻿namespace Midianita.Core.DTOs
+namespace Midianita.Core.DTOs
 {
     public class ImageGenerationJob
     {
@@ -9,6 +9,7 @@
         public string MainText { get; set; }
         public string SubText { get; set; }
         public string Format { get; set; }
+        public string ReferenceImageUrl { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }
