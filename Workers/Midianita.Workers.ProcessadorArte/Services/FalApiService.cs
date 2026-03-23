@@ -93,8 +93,27 @@ public sealed class FalApiService : IFalApiService
             // 3. Download results
             var finalResp = await _httpClient.GetAsync(responseUrl);
             var finalJson = await finalResp.Content.ReadAsStringAsync();
+            
+            // Valida se foi sucesso e loga caso contrário
+            if (!finalResp.IsSuccessStatusCode)
+            {
+                logger.LogError($"[FalApiService] Error downloading results from Fal.ai. HTTP Status: {finalResp.StatusCode}. Response: {finalJson}");
+                throw new HttpRequestException($"Fal API error: {finalResp.StatusCode}");
+            }
+
             using var fDoc = JsonDocument.Parse(finalJson);
-            var finalImageUrl = fDoc.RootElement.GetProperty("images")[0].GetProperty("url").GetString()!;
+            
+            // Extração resiliente usando TryGetProperty
+            if (!fDoc.RootElement.TryGetProperty("images", out var imagesElement) || 
+                imagesElement.ValueKind != JsonValueKind.Array || 
+                imagesElement.GetArrayLength() == 0 ||
+                !imagesElement[0].TryGetProperty("url", out var urlElement))
+            {
+                logger.LogError($"[FalApiService] Invalid payload structure. Missing 'images[0].url'. Raw Payload: {finalJson}");
+                throw new InvalidOperationException("Failed to extract final image URL from the API response.");
+            }
+
+            var finalImageUrl = urlElement.GetString()!;
             
             var bytes = await _httpClient.GetByteArrayAsync(finalImageUrl);
             success = true;
