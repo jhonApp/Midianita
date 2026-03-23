@@ -1,4 +1,4 @@
-﻿using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
 using Amazon.S3;
 using Amazon.SQS;
@@ -40,6 +40,7 @@ namespace Midianita.Ioc
             });
 
             services.AddScoped<IQueuePublisher, SqsPublisher>();
+            services.AddScoped<ISafetyService, SafetyService>();
 
             services.AddScoped<IAuditPublisher>(sp =>
             {
