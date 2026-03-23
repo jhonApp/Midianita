@@ -4,6 +4,8 @@ using Amazon.CDK.AWS.Lambda;
 using Amazon.CDK.AWS.Lambda.EventSources;
 using Amazon.CDK.AWS.S3;
 using Amazon.CDK.AWS.SQS;
+// NOVO: Namespace para leitura segura de parâmetros do SSM Parameter Store
+using Amazon.CDK.AWS.SSM;
 using Constructs;
 
 namespace Midianita.Infrastructure.IaC
@@ -143,6 +145,13 @@ namespace Midianita.Infrastructure.IaC
             var bannerTable = Table.FromTableName(this, "BannerTable", "Midianita_Dev_Banner");
             bannerTable.GrantReadData(processadorLambda);
             processadorLambda.AddEnvironment("DYNAMODB_BANNER_TABLE", bannerTable.TableName);
+
+            // --------------------------------------------------------------------------------------
+            // NOVO: Leitura segura da chave de API Fal.ai diretamente do SSM Parameter Store
+            // O valor NUNCA toca o código-fonte — o CDK resolve o token em deploy time.
+            // --------------------------------------------------------------------------------------
+            var falApiKey = StringParameter.ValueForStringParameter(this, "/Midianita/FalApiKey");
+            processadorLambda.AddEnvironment("FAL_KEY", falApiKey);
 
             // AnalisadorBanner: default batching is fine (lightweight analysis)
             analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
