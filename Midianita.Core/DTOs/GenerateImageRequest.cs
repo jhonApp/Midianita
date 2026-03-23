@@ -15,5 +15,6 @@ namespace Midianita.Core.DTOs
         public string SubText { get; set; }
 
         public string Format { get; set; } = "Square";
+        public string ReferenceImageUrl { get; set; }
     }
 }

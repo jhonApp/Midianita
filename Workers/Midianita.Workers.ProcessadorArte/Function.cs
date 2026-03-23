@@ -60,9 +60,16 @@ public class Function
 
                 var banner = await _jobRepository.GetBannerMetadataAsync(payload.BannerId, context.Logger);
 
+                // Append the ReferenceImageUrl if present
+                var imageUrls = payload.ImageUrls ?? new List<string>();
+                if (!string.IsNullOrEmpty(payload.ReferenceImageUrl))
+                {
+                    imageUrls.Add(payload.ReferenceImageUrl);
+                }
+
                 // Pass JobId to Fal
                 var aiGeneratedBytes = await _falApi.GenerateImageAsync(
-                    payload.ImageUrls ?? new List<string>(), banner.MasterPrompt, context.Logger, payload.JobId);
+                    imageUrls, banner.MasterPrompt, context.Logger, payload.JobId);
 
                 var finalImageBytes = await _imageComposer.ApplyTypographyAsync(
                     aiGeneratedBytes, banner, payload.UserText, context.Logger);

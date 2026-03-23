@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Midianita.Core.DTOs;
 using Midianita.Core.Entities;
@@ -83,6 +83,7 @@ namespace Midianita.API.Controllers
                 MainText = request.MainText,
                 SubText = request.SubText,
                 Format = request.Format,
+                ReferenceImageUrl = request.ReferenceImageUrl,
                 CreatedAt = DateTime.UtcNow
             };
 

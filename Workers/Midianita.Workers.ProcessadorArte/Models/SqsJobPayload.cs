@@ -7,5 +7,6 @@ public record SqsJobPayload(
     [property: JsonPropertyName("JobId")]       string JobId,
     [property: JsonPropertyName("BannerId")]    string BannerId,
     [property: JsonPropertyName("ImageUrls")]    List<string> ImageUrls,
+    [property: JsonPropertyName("ReferenceImageUrl")] string ReferenceImageUrl,
     [property: JsonPropertyName("UserText")]    string UserText
 );
