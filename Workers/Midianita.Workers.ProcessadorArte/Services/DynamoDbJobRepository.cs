@@ -11,9 +11,8 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 /// </summary>
 public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
 {
-    private const string BannerTable = "Midianita_Dev_Banner";
+    private readonly string _bannerTable = Environment.GetEnvironmentVariable("DYNAMODB_BANNER_TABLE") ?? "Midianita_Dev_Banner";
     
-    // Agora lendo do Environment, com fallback para o antigo nome
     private readonly string _jobTable = Environment.GetEnvironmentVariable("DYNAMODB_JOB_TABLE") ?? "Midianita_Dev_Job";
 
     private readonly IAmazonDynamoDB _dynamo;
@@ -26,7 +25,7 @@ public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
 
         var response = await _dynamo.GetItemAsync(new GetItemRequest
         {
-            TableName = BannerTable,
+            TableName = _bannerTable,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["BannerId"] = new AttributeValue { S = bannerId }

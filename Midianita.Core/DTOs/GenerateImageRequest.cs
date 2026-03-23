@@ -5,7 +5,7 @@ namespace Midianita.Core.DTOs
     public class GenerateImageRequest
     {
         [Required]
-        public Guid TemplateAnaliseId { get; set; }
+        public Guid BannerId { get; set; }
 
         [Required]
         [MaxLength(100)]
