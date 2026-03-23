@@ -42,15 +42,21 @@ public sealed class FalApiService : IFalApiService
                 ?? throw new InvalidOperationException($"Environment variable '{FalApiKeyEnv}' is not set.");
 
             var requestBody = new { image_urls = imageUrls.ToArray(), prompt = masterPrompt };
+            // Serializamos o JSON uma única vez — reutilizá-lo é seguro pois é uma string imutável.
             var json = JsonSerializer.Serialize(requestBody);
-            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
 
             // 1. Queue initialization with Polly
+            // CORREÇÃO: StringContent e HttpRequestMessage são criados DENTRO do delegate.
+            // HttpClient faz dispose do Content após cada envio; se firassem fora, o Polly
+            // tentaria re-enviar um objeto já descartado, causando ObjectDisposedException.
             var response = await _retryPolicy.ExecuteAsync(() => 
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, FalQueueUrl);
-                request.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-                request.Content = httpContent;
+                var freshContent = new StringContent(json, Encoding.UTF8, "application/json");
+                var request = new HttpRequestMessage(HttpMethod.Post, FalQueueUrl)
+                {
+                    Headers = { Authorization = new AuthenticationHeaderValue("Key", apiKey) },
+                    Content = freshContent
+                };
                 return _httpClient.SendAsync(request);
             });
 
