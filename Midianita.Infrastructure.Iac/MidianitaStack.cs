@@ -1,5 +1,6 @@
 using Amazon.CDK;
 using Amazon.CDK.AWS.DynamoDB;
+using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Lambda;
 using Amazon.CDK.AWS.Lambda.EventSources;
 using Amazon.CDK.AWS.S3;
@@ -85,6 +86,21 @@ namespace Midianita.Infrastructure.IaC
                 BucketName = "midianita-dev-assets",
                 AutoDeleteObjects = true,
                 RemovalPolicy = RemovalPolicy.DESTROY,
+
+                // -----------------------------------------------------------------------
+                // NOVO: Libera apenas a Bucket Policy pública — o acesso ao objeto é
+                // controlado granularmente pela PolicyStatement abaixo (só arte final/).
+                // BlockPublicAcls e IgnorePublicAcls são mantidos em true
+                // para proteger o bucket contra ACLs de objeto acidentais.
+                // -----------------------------------------------------------------------
+                BlockPublicAccess = new BlockPublicAccess(new BlockPublicAccessOptions
+                {
+                    BlockPublicAcls       = true,
+                    IgnorePublicAcls      = true,
+                    BlockPublicPolicy     = false,  // Permite a policy pública abaixo
+                    RestrictPublicBuckets = false   // Permite requests anônimos para o path liberado
+                }),
+
                 Cors = new ICorsRule[]
                 {
                     new CorsRule
@@ -95,6 +111,18 @@ namespace Midianita.Infrastructure.IaC
                     }
                 }
             });
+
+            // -----------------------------------------------------------------------
+            // NOVO: Bucket Policy — acesso público de leitura SOMENTE para 'arte final/*'
+            // O restante do bucket permanece 100% privado.
+            // -----------------------------------------------------------------------
+            assetsBucket.AddToResourcePolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Effect     = Effect.ALLOW,
+                Actions    = new[] { "s3:GetObject" },
+                Resources  = new[] { $"{assetsBucket.BucketArn}/arte final/*" },
+                Principals = new IPrincipal[] { new AnyPrincipal() }
+            }));
 
             // 5. Lambdas
             var lambdaBinaryPath = System.Environment.GetEnvironmentVariable("LAMBDA_BINARY_PATH") ?? "../lambda-publish";
