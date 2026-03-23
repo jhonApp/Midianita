@@ -47,7 +47,7 @@ namespace Midianita.API.Controllers
             }
 
             // Concatenate text
-            var concatenatedText = $"{request.BackgroundPrompt} {request.MainText} {request.SubText}".Trim();
+            var concatenatedText = $"{request.MainText} {request.SubText}".Trim();
 
             // Pass to ISafetyService
             if (!_safetyService.IsContentSafe(concatenatedText))

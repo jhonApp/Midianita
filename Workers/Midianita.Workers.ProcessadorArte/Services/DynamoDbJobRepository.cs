@@ -12,7 +12,9 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
 {
     private const string BannerTable = "Midianita_Dev_Banner";
-    private const string JobTable    = "Midianita_Dev_Job";
+    
+    // Agora lendo do Environment, com fallback para o antigo nome
+    private readonly string _jobTable = Environment.GetEnvironmentVariable("DYNAMODB_JOB_TABLE") ?? "Midianita_Dev_Job";
 
     private readonly IAmazonDynamoDB _dynamo;
 
@@ -82,7 +84,7 @@ public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
 
         await _dynamo.PutItemAsync(new PutItemRequest
         {
-            TableName = JobTable,
+            TableName = _jobTable,
             Item      = item
         });
 
