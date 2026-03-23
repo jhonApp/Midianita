@@ -137,6 +137,13 @@ namespace Midianita.Infrastructure.IaC
             jobTable.GrantReadWriteData(processadorLambda);
             processadorLambda.AddEnvironment("DYNAMODB_JOB_TABLE", jobTable.TableName);
 
+            // --------------------------------------------------------------------------------------
+            // NOVO: Importando a tabela Midianita_Dev_Banner externa e dando permissão IAM para a Lambda
+            // --------------------------------------------------------------------------------------
+            var bannerTable = Table.FromTableName(this, "BannerTable", "Midianita_Dev_Banner");
+            bannerTable.GrantReadData(processadorLambda);
+            processadorLambda.AddEnvironment("DYNAMODB_BANNER_TABLE", bannerTable.TableName);
+
             // AnalisadorBanner: default batching is fine (lightweight analysis)
             analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
 

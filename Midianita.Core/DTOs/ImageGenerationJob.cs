@@ -1,15 +1,14 @@
-using System;
-
-namespace Midianita.Core.DTOs
+﻿namespace Midianita.Core.DTOs
 {
-    /// <summary>
-    /// Core Layer: DTO representing a job for image generation
-    /// </summary>
     public class ImageGenerationJob
     {
         public Guid JobId { get; set; }
-        public string FullPrompt { get; set; } = string.Empty;
-        public string Format { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public Guid BannerId { get; set; }
+
+        public string MainText { get; set; }
+        public string SubText { get; set; }
+        public string Format { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 }

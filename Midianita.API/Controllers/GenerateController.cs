@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Midianita.Core.DTOs;
 using Midianita.Core.Entities;
@@ -79,7 +79,9 @@ namespace Midianita.API.Controllers
             var job = new ImageGenerationJob
             {
                 JobId = designId,
-                FullPrompt = concatenatedText,
+                BannerId = request.BannerId,
+                MainText = request.MainText,
+                SubText = request.SubText,
                 Format = request.Format,
                 CreatedAt = DateTime.UtcNow
             };
