@@ -33,8 +33,13 @@ public sealed class AnthropicVisionService : IVisionApiService
         "- 'tipo' must be one of: titulo, info, data.\n" +
         "- 'fontWeight' must be one of: regular, medium, semibold, bold, extrabold.\n" +
         "- 'alignment' must be one of: left, center, right.\n" +
+        "ANALYSIS STEPS:\n" +
+        "1. Identify background colors and visual elements.\n" +
+        "2. Identify the main cutout person (if any) and calculate scale/anchor.\n" +
+        "3. Extract all typography with sizes, alignments, and positions.\n" +
+        "4. Generate a 'masterPrompt' in English. This must be a highly detailed, descriptive prompt for an AI image generator to recreate the background atmosphere. Include the dominant colors, lighting, textures, and abstract visual elements. CRITICAL: Add a strict negative constraint at the end explicitly forbidding any text, typography, letters, watermarks, or people in the background, as these will be composited later by our engine.\n" +
         "OUTPUT SCHEMA (return exactly this structure, no extra fields):\n" +
-        "{ \"background\": { \"coresDominantes\": [\"#hex\"], \"elementosVisuais\": [\"string\"] }, " +
+        "{ \"masterPrompt\": \"string\", \"background\": { \"coresDominantes\": [\"#hex\"], \"elementosVisuais\": [\"string\"] }, " +
         "\"pessoa\": { \"anchor\": \"bottom-center\", \"scale\": 0.75, \"offsetY\": 0, \"filters\": [] }, " +
         "\"textos\": [ { \"tipo\": \"titulo\", \"yPosition\": 120, \"fontSize\": 96, \"color\": \"#FFFFFF\", \"fontWeight\": \"extrabold\", \"alignment\": \"center\" } ] }";
 
@@ -134,7 +139,12 @@ public sealed class AnthropicVisionService : IVisionApiService
         }
 
         // Merge: return V1 record with V2 injected into the nullable field
-        return v1Result with { LayoutRulesV2 = v2Layout };
+        // Also copy the MasterPrompt to the top-level entity property so DynamoDB indexes it properly.
+        return v1Result with 
+        { 
+            LayoutRulesV2 = v2Layout,
+            MasterPrompt = !string.IsNullOrWhiteSpace(v2Layout?.MasterPrompt) ? v2Layout.MasterPrompt : v1Result.MasterPrompt
+        };
     }
 
     private static string SanitizeJsonResponse(string raw)
