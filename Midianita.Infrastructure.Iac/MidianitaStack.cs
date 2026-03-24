@@ -210,6 +210,12 @@ namespace Midianita.Infrastructure.IaC
             // --------------------------------------------------------------------------------------
             var falApiKey = StringParameter.ValueForStringParameter(this, "/Midianita/FalApiKey");
             processadorLambda.AddEnvironment("FAL_KEY", falApiKey);
+            
+            // --------------------------------------------------------------------------------------
+            // NOVO: Leitura segura da chave Anthropic (Claude) do SSM Parameter Store
+            // --------------------------------------------------------------------------------------
+            var anthropicKey = StringParameter.ValueForStringParameter(this, "/Midianita/Anthropic_Key");
+            analisadorLambda.AddEnvironment("ANTHROPIC_KEY", anthropicKey);
 
             // AnalisadorBanner: default batching is fine (lightweight analysis)
             analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
