@@ -10,6 +10,8 @@ using System.Text.Json;
 
 namespace Midianita.Workers.AnalisadorBanner;
 
+public record SqsMessageBody(string BannerId);
+
 public class Function
 {
     private readonly IImageStorageService _imageStorageService;
@@ -52,9 +54,10 @@ public class Function
 
             try
             {
-                // Parse BannerId from SQS Message Body
-                using var jsonDoc = JsonDocument.Parse(record.Body);
-                bannerId = jsonDoc.RootElement.GetProperty("BannerId").GetString() 
+                // Parse BannerId from SQS Message Body securely and case-insensitively
+                var bodyOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var parsedBody = JsonSerializer.Deserialize<SqsMessageBody>(record.Body, bodyOptions);
+                bannerId = parsedBody?.BannerId 
                            ?? throw new ArgumentException("BannerId not found in message body.");
 
                 context.Logger.LogInformation($"[AnalisadorBanner] Starting analysis for BannerId: {bannerId}");
