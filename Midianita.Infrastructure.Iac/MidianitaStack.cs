@@ -158,7 +158,8 @@ namespace Midianita.Infrastructure.IaC
                 Environment = new System.Collections.Generic.Dictionary<string, string>
                 {
                     { "DESIGNS_TABLE", designsTable.TableName },
-                    { "ASSETS_BUCKET", assetsBucket.BucketName }
+                    { "ASSETS_BUCKET", assetsBucket.BucketName },
+                    { "DYNAMODB_BANNER_TABLE", "Midianita_Dev_Banner" }
                 }
             });
 
@@ -199,6 +200,9 @@ namespace Midianita.Infrastructure.IaC
             var bannerTable = Table.FromTableName(this, "BannerTable", "Midianita_Dev_Banner");
             bannerTable.GrantReadData(processadorLambda);
             processadorLambda.AddEnvironment("DYNAMODB_BANNER_TABLE", bannerTable.TableName);
+            
+            // NOVO: Concedendo permissão de Escrita/Leitura para a Lambda de Análise na Tabela Banner
+            bannerTable.GrantReadWriteData(analisadorLambda);
 
             // --------------------------------------------------------------------------------------
             // NOVO: Leitura segura da chave de API Fal.ai diretamente do SSM Parameter Store
