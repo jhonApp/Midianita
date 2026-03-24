@@ -8,8 +8,11 @@ namespace Midianita.Workers.AnalisadorBanner.Services;
 /// </summary>
 public interface IBannerRepository
 {
+    Task<string?> GetOriginalImageKeyAsync(string bannerId, ILambdaLogger logger);
+
     Task SaveAsync(
-        string objectKey,
+        string bannerId,
+        string originalImageKey,
         int width,
         int height,
         BannerAnalysisResult result,

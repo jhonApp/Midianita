@@ -20,18 +20,35 @@ public sealed class DynamoDbBannerRepository : IBannerRepository
         _dynamoClient = dynamoClient;
     }
 
-    public async Task SaveAsync(
-        string objectKey, int width, int height, BannerAnalysisResult result, ILambdaLogger logger)
+    public async Task<string?> GetOriginalImageKeyAsync(string bannerId, ILambdaLogger logger)
     {
-        var itemId = Guid.NewGuid().ToString();
+        var response = await _dynamoClient.GetItemAsync(TableName, new Dictionary<string, AttributeValue>
+        {
+            { "BannerId", new AttributeValue { S = bannerId } }
+        });
 
+        if (response.Item != null && response.Item.TryGetValue("OriginalImageKey", out var keyAttr))
+        {
+            return keyAttr.S;
+        }
+        return null;
+    }
+
+    public async Task SaveAsync(
+        string bannerId,
+        string originalImageKey,
+        int width,
+        int height,
+        BannerAnalysisResult result,
+        ILambdaLogger logger)
+    {
         logger.LogInformation(
-            $"[DynamoDbBannerRepository] 💾 Saving item {itemId} to {TableName}");
+            $"[DynamoDbBannerRepository] 💾 Updating item {bannerId} in {TableName}");
 
         var item = new Dictionary<string, AttributeValue>
         {
-            ["BannerId"]         = new AttributeValue { S    = itemId },
-            ["OriginalImageKey"] = new AttributeValue { S    = objectKey },
+            ["BannerId"]         = new AttributeValue { S    = bannerId },
+            ["OriginalImageKey"] = new AttributeValue { S    = originalImageKey },
             ["MasterPrompt"]     = new AttributeValue { S    = result.MasterPrompt },
             ["Colors"]           = new AttributeValue { SS   = result.Colors },
             ["Typography"]       = new AttributeValue { S    = result.Typography },
@@ -48,7 +65,7 @@ public sealed class DynamoDbBannerRepository : IBannerRepository
             ["Height"]           = new AttributeValue { N    = height.ToString() },
             ["HasCutoutImages"]  = new AttributeValue { BOOL = result.HasCutoutImages },
             ["CreatedAt"]        = new AttributeValue { S    = DateTime.UtcNow.ToString("O") },
-            ["Status"]           = new AttributeValue { S    = "ANALYZED" }
+            ["Status"]           = new AttributeValue { S    = "ANALYZED" } // Changed from COMPLETED to ANALYZED as per original 
         };
 
         // Omit CutoutPlacement entirely when null/empty to avoid DynamoDB empty-string errors
@@ -72,6 +89,6 @@ public sealed class DynamoDbBannerRepository : IBannerRepository
         });
 
         logger.LogInformation(
-            $"[DynamoDbBannerRepository] ✅ Item saved. BannerId: {itemId}");
+            $"[DynamoDbBannerRepository] ✅ Item updated. BannerId: {bannerId}");
     }
 }

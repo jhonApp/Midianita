@@ -1,10 +1,10 @@
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.Core;
-using Amazon.Lambda.S3Events;
+using Amazon.Lambda.SQSEvents;
 using Amazon.S3;
 using Microsoft.Extensions.DependencyInjection;
 using Midianita.Workers.AnalisadorBanner.Services;
-using System.Net.Http.Headers;
+using System.Text.Json;
 
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
@@ -44,31 +44,46 @@ public class Function
         _safety = provider.GetRequiredService<ISafetyService>();
     }
 
-    public async Task FunctionHandler(S3Event s3Event, ILambdaContext context)
+    public async Task FunctionHandler(SQSEvent sqsEvent, ILambdaContext context)
     {
-        foreach (var record in s3Event.Records)
+        foreach (var record in sqsEvent.Records)
         {
-            var jobId = record.S3.Object.Key;
+            string bannerId = string.Empty;
 
             try
             {
+                // Parse BannerId from SQS Message Body
+                using var jsonDoc = JsonDocument.Parse(record.Body);
+                bannerId = jsonDoc.RootElement.GetProperty("BannerId").GetString() 
+                           ?? throw new ArgumentException("BannerId not found in message body.");
+
+                context.Logger.LogInformation($"[AnalisadorBanner] Starting analysis for BannerId: {bannerId}");
+
+                // Get original image key from DynamoDB
+                var originalKey = await _bannerRepository.GetOriginalImageKeyAsync(bannerId, context.Logger)
+                                  ?? throw new InvalidOperationException($"OriginalImageKey not found for BannerId: {bannerId}");
+
                 // Safety check on metadata or prompt if available (here we check the object key for signs of trouble)
-                if (!_safety.IsContentSafe(jobId, context.Logger))
+                if (!_safety.IsContentSafe(originalKey, context.Logger))
                 {
-                    context.Logger.LogWarning($"[Audit] Job {jobId} blocked by safety guardrails.");
+                    context.Logger.LogWarning($"[Audit] Job {bannerId} blocked by safety guardrails.");
                     return;
                 }
 
+                var bucketName = Environment.GetEnvironmentVariable("ASSETS_BUCKET") 
+                                 ?? throw new InvalidOperationException("ASSETS_BUCKET env var is not set.");
+
                 var (base64Image, width, height) = await _imageStorageService.DownloadAndProcessAsync(
-                    record.S3.Bucket.Name, jobId, context.Logger);
+                    bucketName, originalKey, context.Logger);
 
-                var result = await _visionApiService.AnalyzeImageAsync(base64Image, context.Logger, jobId);
+                var result = await _visionApiService.AnalyzeImageAsync(base64Image, context.Logger, bannerId);
 
-                await _bannerRepository.SaveAsync(jobId, width, height, result, context.Logger);
+                await _bannerRepository.SaveAsync(bannerId, originalKey, width, height, result, context.Logger);
             }
             catch (Exception ex)
             {
-                context.Logger.LogError($"[AnalisadorBanner] Error processing {jobId}: {ex.Message}");
+                var idToLog = string.IsNullOrEmpty(bannerId) ? record.MessageId : bannerId;
+                context.Logger.LogError($"[AnalisadorBanner] Error processing {idToLog}: {ex.Message}");
                 throw; // Rethrow for SQS/Lambda retry mechanisms
             }
         }
