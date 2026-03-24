@@ -21,13 +21,15 @@ public sealed class S3ImageService : IImageStorageService
     public async Task<(string Base64, int Width, int Height)> DownloadAndProcessAsync(
         string bucketName, string objectKey, ILambdaLogger logger)
     {
+        var cleanKey = SanitizeObjectKey(objectKey);
+
         logger.LogInformation(
-            $"[S3ImageService] ⬇️  Downloading image from S3: {bucketName}/{objectKey}");
+            $"[S3ImageService] ⬇️  Downloading image from S3: {bucketName}/{cleanKey}");
 
         var request = new GetObjectRequest
         {
             BucketName = bucketName,
-            Key        = objectKey
+            Key        = cleanKey
         };
 
         using var response     = await _s3Client.GetObjectAsync(request);
@@ -56,5 +58,21 @@ public sealed class S3ImageService : IImageStorageService
             $"[S3ImageService] ✅ Image ready. Size: {imageBytes.Length} bytes, MIME: {contentType}");
 
         return (dataUri, width, height);
+    }
+
+    /// <summary>
+    /// Checks if the provided key is an absolute URL and extracts just the path portion.
+    /// Otherwise, assumes it is already a valid object key.
+    /// </summary>
+    private static string SanitizeObjectKey(string objectKey)
+    {
+        if (Uri.TryCreate(objectKey, UriKind.Absolute, out var uri))
+        {
+            // AbsolutePath includes a leading slash (e.g. "/banners-admin/imagem.png")
+            // We want everything after the slash for the S3 object key.
+            return uri.AbsolutePath.TrimStart('/');
+        }
+        
+        return objectKey;
     }
 }
