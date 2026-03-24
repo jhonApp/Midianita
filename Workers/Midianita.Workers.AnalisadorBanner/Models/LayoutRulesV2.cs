@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 namespace Midianita.Workers.AnalisadorBanner.Models;
 
 public record LayoutRulesV2(
+    [property: JsonPropertyName("masterPrompt")] string MasterPrompt,
     [property: JsonPropertyName("background")]  BackgroundLayout Background,
     [property: JsonPropertyName("pessoa")]      PessoaLayout     Pessoa,
     [property: JsonPropertyName("textos")]      List<TextElement> Textos
