@@ -80,6 +80,27 @@ namespace Midianita.Infrastructure.IaC
                 }
             });
 
+            // -----------------------------------------------------------
+            // NOVO: Fila SQS para Análise de Imagem (Claude 3.5 Sonnet)
+            // -----------------------------------------------------------
+            var analysisDlq = new Queue(this, "AnalysisQueueDLQ", new QueueProps
+            {
+                QueueName = "Midianita_Dev_AnalysisQueue_DLQ",
+                RetentionPeriod = Duration.Days(14)
+            });
+
+            var analysisQueue = new Queue(this, "AnalysisQueue", new QueueProps
+            {
+                QueueName = "Midianita_Dev_AnalysisQueue",
+                // VisibilityTimeout igual ou maior que o Timeout da Lambda (60s)
+                VisibilityTimeout = Duration.Seconds(60),
+                DeadLetterQueue = new DeadLetterQueue
+                {
+                    MaxReceiveCount = 3,
+                    Queue = analysisDlq
+                }
+            });
+
             // 4. S3 Bucket: midianita-dev-assets
             var assetsBucket = new Bucket(this, "AssetsBucket", new BucketProps
             {
@@ -188,6 +209,9 @@ namespace Midianita.Infrastructure.IaC
 
             // AnalisadorBanner: default batching is fine (lightweight analysis)
             analisadorLambda.AddEventSource(new SqsEventSource(auditQueue));
+            
+            // NOVO: Gatilho da nova fila de análise para o AnalisadorBanner
+            analisadorLambda.AddEventSource(new SqsEventSource(analysisQueue));
 
             // ProcessadorArte: BatchSize=1 prevents parallel heavy AI jobs on the same instance;
             // NOVO: (4) Alterado de auditQueue para imageGenerationQueue
@@ -202,6 +226,10 @@ namespace Midianita.Infrastructure.IaC
             new CfnOutput(this, "DLQUrl",   new CfnOutputProps { Value = auditDlq.QueueUrl });
             // NOVO: (5) Output da Fila Principal de Geração de Imagem
             new CfnOutput(this, "ImageGenerationQueueUrl", new CfnOutputProps { Value = imageGenerationQueue.QueueUrl });
+            
+            // NOVO: Output da Fila de Análise
+            new CfnOutput(this, "AnalysisQueueUrl", new CfnOutputProps { Value = analysisQueue.QueueUrl });
+            
             new CfnOutput(this, "S3BucketName", new CfnOutputProps { Value = assetsBucket.BucketName });
             new CfnOutput(this, "DesignsTableName", new CfnOutputProps { Value = designsTable.TableName });
             new CfnOutput(this, "AuditTableName", new CfnOutputProps { Value = auditTable.TableName });

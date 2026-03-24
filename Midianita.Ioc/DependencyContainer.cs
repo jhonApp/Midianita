@@ -57,6 +57,20 @@ namespace Midianita.Ioc
                 return new DynamoDBContext(client);
             });
 
+            services.AddScoped<IBannerRepository>(sp =>
+            {
+                var client = sp.GetRequiredService<IAmazonDynamoDB>();
+                var tableName = configuration["DynamoDb:BannerTableName"] ?? "Midianita_Dev_Banner";
+                return new DynamoDbBannerAnalysisRepository(client, tableName);
+            });
+
+            services.AddScoped<ISqsPublisher>(sp =>
+            {
+                var sqsClient = sp.GetRequiredService<IAmazonSQS>();
+                var queueUrl = configuration["AWS:AnalysisQueueUrl"];
+                return new SqsAnalysisPublisher(sqsClient, queueUrl);
+            });
+
             services.AddScoped<IUserRepository, DynamoDbUserRepository>();
             services.AddScoped<IRefreshTokenRepository, DynamoDbRefreshTokenRepository>();
             services.AddScoped<ICryptographyService, Argon2PasswordHasher>();
