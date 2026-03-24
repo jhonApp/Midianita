@@ -17,18 +17,26 @@ namespace Midianita.Workers.AnalisadorBanner.Services;
 public sealed class AnthropicVisionService : IVisionApiService
 {
     private const string AnthropicApiUrl = "https://api.anthropic.com/v1/messages";
-    private const string AnthropicModel = "claude-3-5-sonnet-20241022"; 
+    private const string AnthropicModel = "claude-sonnet-4-6";
     private const string AnthropicApiKeyEnv = "ANTHROPIC_KEY";
     private const string AnthropicVersion = "2023-06-01";
 
     private const string SystemPrompt =
-        "Act as an Elite Art Director and UI/UX Layout Engine. Analyze this reference banner and extract its exact structural blueprint. You MUST break down your analysis into these rigid categories: " +
-        "1. LAYERS (Z-Index): Z-0 (Base background color/gradient), Z-1 (Massive geometric anchors like giant circles, ovals, or grids), Z-2 (Midground elements), Z-3 (Foreground subjects). " +
-        "2. SUBJECT ANONYMIZATION (CRITICAL): DO NOT describe the specific identity of the people. " +
-        "Return ONLY a valid JSON object matching this schema: " +
-        "{ \"masterPrompt\": \"string\", \"colors\": [\"string\"], " +
-        "\"typography\": \"string\", \"layoutRules\": { \"cutoutPlacement\": \"string\", \"cutoutScalePercentage\": 0, \"textPlacement\": \"string\", \"textAlign\": \"string\" }, " +
-        "\"hasCutoutImages\": boolean, \"cutoutPlacement\": \"string\" }.";
+        "You are a precise design forensics engine. Your sole task is to analyze the provided banner image using computer vision and extract its visual layout as a perfectly structured JSON object.\n" +
+        "CRITICAL RULES:\n" +
+        "- Return ONLY the raw JSON object. No Markdown, no code fences, no explanations, no preamble.\n" +
+        "- Every field is REQUIRED. If a value cannot be determined, use a sensible default.\n" +
+        "- All YPosition and FontSize values must be calibrated to a reference canvas height of 1080 pixels.\n" +
+        "- Color values must be hexadecimal strings, e.g. '#FF5733'.\n" +
+        "- Scale is a float between 0.1 and 1.0, representing the cutout height relative to the canvas height.\n" +
+        "- 'anchor' must be one of: bottom-center, bottom-right, bottom-left, center-right, center-left.\n" +
+        "- 'tipo' must be one of: titulo, info, data.\n" +
+        "- 'fontWeight' must be one of: regular, medium, semibold, bold, extrabold.\n" +
+        "- 'alignment' must be one of: left, center, right.\n" +
+        "OUTPUT SCHEMA (return exactly this structure, no extra fields):\n" +
+        "{ \"background\": { \"coresDominantes\": [\"#hex\"], \"elementosVisuais\": [\"string\"] }, " +
+        "\"pessoa\": { \"anchor\": \"bottom-center\", \"scale\": 0.75, \"offsetY\": 0, \"filters\": [] }, " +
+        "\"textos\": [ { \"tipo\": \"titulo\", \"yPosition\": 120, \"fontSize\": 96, \"color\": \"#FFFFFF\", \"fontWeight\": \"extrabold\", \"alignment\": \"center\" } ] }";
 
     private readonly HttpClient _httpClient;
     private readonly ITelemetryService _telemetry;
@@ -64,7 +72,7 @@ public sealed class AnthropicVisionService : IVisionApiService
         var requestBody = new
         {
             model = AnthropicModel,
-            max_tokens = 1024,
+            max_tokens = 2048,
             system = SystemPrompt,
             messages = new[] {
                 new { role = "user", content = new object[] {
@@ -106,8 +114,27 @@ public sealed class AnthropicVisionService : IVisionApiService
         var content = document.RootElement.GetProperty("content")[0].GetProperty("text").GetString()
             ?? throw new InvalidOperationException("Anthropic returned empty content.");
 
-        return JsonSerializer.Deserialize<BannerAnalysisResult>(SanitizeJsonResponse(content), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new InvalidOperationException("Failed to deserialize JSON.");
+        var svgJsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        // ── V1 deserialization: populates MasterPrompt, Colors, LayoutRules, etc. ──
+        // The V2 schema is a strict subset that omits V1 fields, so we deserialize
+        // twice from the same raw JSON string to populate both generations.
+        var v1Result = JsonSerializer.Deserialize<BannerAnalysisResult>(SanitizeJsonResponse(content), svgJsonOptions)
+            ?? throw new InvalidOperationException("Failed to deserialize V1 JSON from Claude response.");
+
+        // ── V2 deserialization: populates Background, Pessoa, Textos[] ──
+        LayoutRulesV2? v2Layout = null;
+        try
+        {
+            v2Layout = JsonSerializer.Deserialize<LayoutRulesV2>(SanitizeJsonResponse(content), svgJsonOptions);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"[AnthropicVisionService] LayoutRulesV2 deserialization failed (V1 still saved). Reason: {ex.Message}");
+        }
+
+        // Merge: return V1 record with V2 injected into the nullable field
+        return v1Result with { LayoutRulesV2 = v2Layout };
     }
 
     private static string SanitizeJsonResponse(string raw)

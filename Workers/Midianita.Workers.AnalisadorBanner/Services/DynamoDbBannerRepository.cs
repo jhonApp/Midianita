@@ -2,6 +2,7 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Lambda.Core;
 using Midianita.Workers.AnalisadorBanner.Models;
+using System.Text.Json;
 
 namespace Midianita.Workers.AnalisadorBanner.Services;
 
@@ -53,6 +54,16 @@ public sealed class DynamoDbBannerRepository : IBannerRepository
         // Omit CutoutPlacement entirely when null/empty to avoid DynamoDB empty-string errors
         if (!string.IsNullOrEmpty(result.CutoutPlacement))
             item["CutoutPlacement"] = new AttributeValue { S = result.CutoutPlacement };
+
+        // ── V2 layout: persisted as a JSON string for easy forward-compatibility ──
+        // ProcessadorArte reads this field independently; null means Claude used V1 schema.
+        if (result.LayoutRulesV2 is not null)
+        {
+            item["LayoutRulesV2"] = new AttributeValue
+            {
+                S = JsonSerializer.Serialize(result.LayoutRulesV2)
+            };
+        }
 
         await _dynamoClient.PutItemAsync(new PutItemRequest
         {
