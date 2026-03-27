@@ -4,8 +4,11 @@ using SkiaSharp;
 namespace Midianita.Workers.ProcessadorArte.Services;
 
 /// <summary>
-/// Composes a final banner by layering background, person cutout, and text
-/// elements using deterministic coordinates from <see cref="LayoutRulesV2"/>.
+/// Composes the final banner using a strict 4-layer Z-index system:
+///   Layer 1 — AI-generated background (clean, no text)
+///   Layer 2 — Background text (tipo="background", drawn BEHIND the person)
+///   Layer 3 — Person cutout (scaled, anchored, filtered)
+///   Layer 4 — Foreground text (titulo, info, data — drawn ON TOP of everything)
 /// </summary>
 public sealed class SkiaRendererService : ISkiaRendererService
 {
@@ -24,32 +27,56 @@ public sealed class SkiaRendererService : ISkiaRendererService
         var canvas = surface.Canvas;
         canvas.Clear(SKColors.Black);
 
-        // ── Pass 1: Background ─────────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════════════════
+        //  LAYER 1 — BACKGROUND (AI-generated clean image)
+        // ═══════════════════════════════════════════════════════════════════
         DrawBackground(canvas, backgroundBytes, canvasWidth, canvasHeight);
 
-        // ── Pass 2: Person Cutout ──────────────────────────────────────────
-        if (personBytes is { Length: > 0 } && layout.Pessoa is not null)
+        // ═══════════════════════════════════════════════════════════════════
+        //  LAYER 2 — BACKGROUND TEXT (giant decorative text BEHIND the person)
+        // ═══════════════════════════════════════════════════════════════════
+        if (layout?.Textos is { Count: > 0 })
+        {
+            var bgTexts = layout.Textos
+                .Where(t => t?.Tipo != null && t.Tipo.Equals("background", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            DrawTextElements(canvas, bgTexts, canvasWidth);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  LAYER 3 — PERSON CUTOUT (scaled, anchored, filtered)
+        // ═══════════════════════════════════════════════════════════════════
+        if (personBytes is { Length: > 0 } && layout?.Pessoa is not null)
         {
             DrawPerson(canvas, personBytes, layout.Pessoa, canvasWidth, canvasHeight);
         }
 
-        // ── Pass 3: Text Overlays ──────────────────────────────────────────
-        if (layout.Textos is { Count: > 0 })
+        // ═══════════════════════════════════════════════════════════════════
+        //  LAYER 4 — FOREGROUND TEXT (titulo, info, data — on top of everything)
+        // ═══════════════════════════════════════════════════════════════════
+        if (layout?.Textos is { Count: > 0 })
         {
-            DrawTexts(canvas, layout.Textos, canvasWidth);
+            var fgTexts = layout.Textos
+                .Where(t => t?.Tipo == null || !t.Tipo.Equals("background", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            DrawTextElements(canvas, fgTexts, canvasWidth);
         }
 
-        // ── Encode to JPEG ─────────────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════════════════
+        //  ENCODE — PNG output (lossless, preserves transparency edges)
+        // ═══════════════════════════════════════════════════════════════════
         using var snapshot = surface.Snapshot();
-        using var encoded  = snapshot.Encode(SKEncodedImageFormat.Jpeg, 92);
+        using var encoded  = snapshot.Encode(SKEncodedImageFormat.Png, 100);
         return encoded.ToArray();
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  PASS 1 — BACKGROUND
-    // ═══════════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────
+    //  LAYER 1 IMPL — Background
+    // ───────────────────────────────────────────────────────────────────────
 
-    private static void DrawBackground(SKCanvas canvas, byte[] bgBytes, int w, int h)
+    private static void DrawBackground(SKCanvas canvas, byte[]? bgBytes, int w, int h)
     {
         if (bgBytes is not { Length: > 0 }) return;
 
@@ -61,9 +88,9 @@ public sealed class SkiaRendererService : ISkiaRendererService
         canvas.DrawImage(image, new SKRect(0, 0, w, h), paint);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  PASS 2 — PERSON CUTOUT (scale, filters, anchor)
-    // ═══════════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────
+    //  LAYER 3 IMPL — Person Cutout
+    // ───────────────────────────────────────────────────────────────────────
 
     private static void DrawPerson(
         SKCanvas canvas, byte[] personBytes, PessoaLayout pessoa, int canvasW, int canvasH)
@@ -97,12 +124,12 @@ public sealed class SkiaRendererService : ISkiaRendererService
     {
         return (anchor?.ToLowerInvariant() ?? "bottom-center") switch
         {
-            "bottom-center" => ((canvasW - imgW) / 2f,      canvasH - imgH),
-            "bottom-right"  => (canvasW - imgW,              canvasH - imgH),
-            "bottom-left"   => (0f,                          canvasH - imgH),
-            "center-right"  => (canvasW - imgW,              (canvasH - imgH) / 2f),
-            "center-left"   => (0f,                          (canvasH - imgH) / 2f),
-            _               => ((canvasW - imgW) / 2f,      canvasH - imgH), // default → bottom-center
+            "bottom-center" => ((canvasW - imgW) / 2f,  canvasH - imgH),
+            "bottom-right"  => (canvasW - imgW,          canvasH - imgH),
+            "bottom-left"   => (0f,                      canvasH - imgH),
+            "center-right"  => (canvasW - imgW,          (canvasH - imgH) / 2f),
+            "center-left"   => (0f,                      (canvasH - imgH) / 2f),
+            _               => ((canvasW - imgW) / 2f,  canvasH - imgH), // fallback → bottom-center
         };
     }
 
@@ -114,6 +141,8 @@ public sealed class SkiaRendererService : ISkiaRendererService
 
         foreach (var filter in filters)
         {
+            if (string.IsNullOrWhiteSpace(filter)) continue;
+
             var lower = filter.ToLowerInvariant().Trim();
             SKColorFilter? current = null;
 
@@ -178,12 +207,14 @@ public sealed class SkiaRendererService : ISkiaRendererService
         return fallback;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  PASS 3 — TEXT OVERLAYS
-    // ═══════════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────
+    //  LAYER 2 & 4 IMPL — Text Elements (shared logic, different Z-order)
+    // ───────────────────────────────────────────────────────────────────────
 
-    private static void DrawTexts(SKCanvas canvas, List<TextElement> textos, int canvasWidth)
+    private static void DrawTextElements(SKCanvas canvas, List<TextElement> textos, int canvasWidth)
     {
+        if (textos is null || textos.Count == 0) return;
+
         foreach (var texto in textos)
         {
             if (texto is null) continue;
@@ -192,8 +223,11 @@ public sealed class SkiaRendererService : ISkiaRendererService
             var textAlign = ResolveTextAlign(texto.Alignment);
             var weight    = ResolveFontWeight(texto.FontWeight);
 
-            using var typeface = SKTypeface.FromFamilyName(DefaultFontFamily, weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-                              ?? SKTypeface.Default;
+            using var typeface = SKTypeface.FromFamilyName(
+                DefaultFontFamily, weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
+                ?? SKTypeface.Default;
+
+            float xPos = ResolveTextX(textAlign, canvasWidth);
 
             // ── Drop shadow ────────────────────────────────────────────────
             using var shadowPaint = new SKPaint
@@ -205,8 +239,11 @@ public sealed class SkiaRendererService : ISkiaRendererService
                 Typeface    = typeface
             };
 
-            float shadowX = ResolveTextX(textAlign, canvasWidth) + ShadowOffset;
-            canvas.DrawText(texto.Tipo ?? string.Empty, shadowX, texto.YPosition + ShadowOffset, shadowPaint);
+            canvas.DrawText(
+                texto.Tipo ?? string.Empty,
+                xPos + ShadowOffset,
+                texto.YPosition + ShadowOffset,
+                shadowPaint);
 
             // ── Main text ──────────────────────────────────────────────────
             using var mainPaint = new SKPaint
@@ -218,8 +255,11 @@ public sealed class SkiaRendererService : ISkiaRendererService
                 Typeface    = typeface
             };
 
-            float mainX = ResolveTextX(textAlign, canvasWidth);
-            canvas.DrawText(texto.Tipo ?? string.Empty, mainX, texto.YPosition, mainPaint);
+            canvas.DrawText(
+                texto.Tipo ?? string.Empty,
+                xPos,
+                texto.YPosition,
+                mainPaint);
         }
     }
 
