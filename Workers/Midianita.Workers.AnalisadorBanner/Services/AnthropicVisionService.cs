@@ -30,14 +30,14 @@ public sealed class AnthropicVisionService : IVisionApiService
         "- Color values must be hexadecimal strings, e.g. '#FF5733'.\n" +
         "- Scale is a float between 0.1 and 1.0, representing the cutout height relative to the canvas height.\n" +
         "- 'anchor' must be one of: bottom-center, bottom-right, bottom-left, center-right, center-left.\n" +
-        "- 'tipo' must be one of: titulo, info, data.\n" +
+        "- 'tipo' must be one of: titulo, info, data, background.\n" +
         "- 'fontWeight' must be one of: regular, medium, semibold, bold, extrabold.\n" +
         "- 'alignment' must be one of: left, center, right.\n" +
         "ANALYSIS STEPS:\n" +
-        "1. Identify background colors and visual elements.\n" +
+        "1. Identify background colors and visual elements (ONLY non-typographic elements: gradients, textures, particles, geometric shapes like lines, circles, globes).\n" +
         "2. Identify the main cutout person (if any) and calculate scale/anchor.\n" +
-        "3. Extract all typography with sizes, alignments, and positions.\n" +
-        "4. Generate a 'masterPrompt' in English. This must be a highly detailed, descriptive prompt for an AI image generator to recreate the background atmosphere. Include the dominant colors, lighting, textures, and abstract visual elements. CRITICAL: Add a strict negative constraint at the end explicitly forbidding any text, typography, letters, watermarks, or people in the background, as these will be composited later by our engine.\n" +
+        "3. Extract ALL typography, including large decorative background text. If the original image has giant typographic elements in the background (e.g., a large 'DOMINGO' or 'WORSHIP' behind the person), extract them as a text element with tipo='background'. These will be rendered by our engine, NOT by the image generator.\n" +
+        "4. Generate a 'masterPrompt' in English. This must be a highly detailed, descriptive prompt for an AI image generator to recreate ONLY the background atmosphere. Include dominant colors, lighting direction, textures, gradients, and abstract visual elements (particles, bokeh, lens flares, geometric shapes). ABSOLUTE PROHIBITION: Under NO circumstances should the masterPrompt include requests for typography, letters, text shapes, words, characters, glyphs, or any form of written content. If the original background has large typographic elements, IGNORE them completely in the masterPrompt — they will be composited separately by our SkiaSharp rendering engine. End the prompt with: 'Negative: no text, no letters, no typography, no words, no watermarks, no people, no faces.'\n" +
         "OUTPUT SCHEMA (return exactly this structure, no extra fields):\n" +
         "{ \"masterPrompt\": \"string\", \"background\": { \"coresDominantes\": [\"#hex\"], \"elementosVisuais\": [\"string\"] }, " +
         "\"pessoa\": { \"anchor\": \"bottom-center\", \"scale\": 0.75, \"offsetY\": 0, \"filters\": [] }, " +
