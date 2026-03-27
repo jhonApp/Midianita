@@ -101,15 +101,27 @@ public class Function
                 // ═══════════════════════════════════════════════════════════
                 byte[] personBytes = Array.Empty<byte>();
 
-                if (banner.HasCutoutImages && !string.IsNullOrWhiteSpace(banner.OriginalImageKey))
+                if (!string.IsNullOrWhiteSpace(banner.OriginalImageKey))
                 {
                     context.Logger.LogInformation(
                         $"[ProcessadorArte] 👤 Downloading person cutout: {banner.OriginalImageKey}");
 
-                    personBytes = await DownloadFromS3Async(banner.OriginalImageKey, context.Logger);
+                    try
+                    {
+                        personBytes = await DownloadPersonFromS3Async(banner.OriginalImageKey, context.Logger);
 
-                    context.Logger.LogInformation(
-                        $"[ProcessadorArte] ✅ Person downloaded: {personBytes.Length} bytes");
+                        context.Logger.LogInformation(
+                            $"[ProcessadorArte] ✅ Person downloaded: {personBytes.Length} bytes");
+                    }
+                    catch (Exception ex)
+                    {
+                        context.Logger.LogWarning(
+                            $"[ProcessadorArte] ⚠️ Could not download person image: {ex.Message}. Proceeding without cutout.");
+                    }
+                }
+                else
+                {
+                    context.Logger.LogInformation("[ProcessadorArte] ℹ️ No OriginalImageKey found. Rendering without person.");
                 }
 
                 // ═══════════════════════════════════════════════════════════
@@ -152,15 +164,31 @@ public class Function
     // ── S3 Download Helper ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Downloads an object from S3 using the provided key or full URL.
+    /// Downloads the person cutout from the INPUT assets bucket.
     /// Handles both raw keys ("banners-admin/img.png") and absolute URLs.
     /// </summary>
-    private async Task<byte[]> DownloadFromS3Async(string objectKeyOrUrl, ILambdaLogger logger)
+    private async Task<byte[]> DownloadPersonFromS3Async(string objectKeyOrUrl, ILambdaLogger logger)
     {
-        var bucket = Environment.GetEnvironmentVariable("OUTPUT_S3_BUCKET")
-            ?? throw new InvalidOperationException("Environment variable 'OUTPUT_S3_BUCKET' is not set.");
+        string bucket;
+        string objectKey;
 
-        var objectKey = SanitizeObjectKey(objectKeyOrUrl);
+        // If it's a full S3 URL, extract bucket and key from it
+        if (Uri.TryCreate(objectKeyOrUrl, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == "https" || uri.Scheme == "http") &&
+            uri.Host.Contains(".s3."))
+        {
+            var hostParts = uri.Host.Split('.');
+            bucket = hostParts[0];
+            objectKey = uri.AbsolutePath.TrimStart('/');
+        }
+        else
+        {
+            // It's a relative key — use the configured input bucket
+            bucket = Environment.GetEnvironmentVariable("INPUT_S3_BUCKET")
+                ?? Environment.GetEnvironmentVariable("OUTPUT_S3_BUCKET")
+                ?? throw new InvalidOperationException("Neither 'INPUT_S3_BUCKET' nor 'OUTPUT_S3_BUCKET' is configured.");
+            objectKey = objectKeyOrUrl;
+        }
 
         logger.LogInformation($"[ProcessadorArte] ⬇️ S3 Download: bucket={bucket}, key={objectKey}");
 
@@ -173,18 +201,5 @@ public class Function
         using var ms = new MemoryStream();
         await response.ResponseStream.CopyToAsync(ms);
         return ms.ToArray();
-    }
-
-    /// <summary>
-    /// Strips a full S3 URL down to just the object key if needed.
-    /// </summary>
-    private static string SanitizeObjectKey(string keyOrUrl)
-    {
-        if (Uri.TryCreate(keyOrUrl, UriKind.Absolute, out var uri) &&
-            (uri.Scheme == "https" || uri.Scheme == "http"))
-        {
-            return uri.AbsolutePath.TrimStart('/');
-        }
-        return keyOrUrl;
     }
 }
