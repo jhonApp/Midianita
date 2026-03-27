@@ -111,12 +111,20 @@ public class Function
                         personBytes = await DownloadPersonFromS3Async(payload.ReferenceImageUrl, context.Logger);
 
                         context.Logger.LogInformation(
-                            $"[ProcessadorArte] ✅ User person cutout downloaded: {personBytes.Length} bytes");
+                            $"[ProcessadorArte] ✅ User person image downloaded: {personBytes.Length} bytes");
+
+                        if (payload.RemoveBackground && personBytes.Length > 0)
+                        {
+                            context.Logger.LogInformation("[ProcessadorArte] ✂️ Removing background with Fal.ai...");
+                            personBytes = await _falApi.RemoveBackgroundAsync(personBytes, context.Logger, payload.JobId);
+                            context.Logger.LogInformation($"[ProcessadorArte] ✅ Background removed: {personBytes.Length} bytes");
+                        }
                     }
                     catch (Exception ex)
                     {
                         context.Logger.LogWarning(
-                            $"[ProcessadorArte] ⚠️ Could not download user image: {ex.Message}. Proceeding without cutout.");
+                            $"[ProcessadorArte] ⚠️ Could not prepare user image: {ex.Message}. Proceeding without cutout.");
+                        personBytes = Array.Empty<byte>();
                     }
                 }
                 else

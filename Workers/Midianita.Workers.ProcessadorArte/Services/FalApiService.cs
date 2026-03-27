@@ -12,6 +12,7 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 public sealed class FalApiService : IFalApiService
 {
     private const string FalQueueUrl = "https://queue.fal.run/fal-ai/nano-banana";
+    private const string FalRmbgQueueUrl = "https://queue.fal.run/fal-ai/bria-rmbg";
     private const string FalApiKeyEnv = "FAL_KEY";
 
     private readonly HttpClient _httpClient;
@@ -133,6 +134,97 @@ public sealed class FalApiService : IFalApiService
         {
             sw.Stop();
             _telemetry.LogGenerationResult(jobId, "fal-ai/fast-nano-banana", sw.ElapsedMilliseconds, success, error);
+        }
+    }
+
+    public async Task<byte[]> RemoveBackgroundAsync(byte[] imageBytes, ILambdaLogger logger, string jobId)
+    {
+        var sw = Stopwatch.StartNew();
+        bool success = false;
+        string? error = null;
+
+        try
+        {
+            var apiKey = Environment.GetEnvironmentVariable(FalApiKeyEnv)
+                ?? throw new InvalidOperationException($"Environment variable '{FalApiKeyEnv}' is not set.");
+
+            var base64 = Convert.ToBase64String(imageBytes);
+            var requestBody = new { image_url = $"data:image/png;base64,{base64}" };
+            var json = JsonSerializer.Serialize(requestBody);
+
+            var response = await _retryPolicy.ExecuteAsync(() => 
+            {
+                var freshContent = new StringContent(json, Encoding.UTF8, "application/json");
+                var request = new HttpRequestMessage(HttpMethod.Post, FalRmbgQueueUrl)
+                {
+                    Headers = { Authorization = new AuthenticationHeaderValue("Key", apiKey) },
+                    Content = freshContent
+                };
+                return _httpClient.SendAsync(request);
+            });
+
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException($"Fal RMBG queue error: {response.StatusCode}");
+
+            var queueJson = await response.Content.ReadAsStringAsync();
+            using var queueDoc = JsonDocument.Parse(queueJson);
+            var statusUrl = queueDoc.RootElement.GetProperty("status_url").GetString()!;
+            var responseUrl = queueDoc.RootElement.GetProperty("response_url").GetString()!;
+
+            var pollingCts = new CancellationTokenSource(TimeSpan.FromSeconds(110));
+            while (!pollingCts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(2000, pollingCts.Token);
+
+                var statusResp = await _retryPolicy.ExecuteAsync(() =>
+                {
+                    using var statusReq = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+                    statusReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+                    return _httpClient.SendAsync(statusReq);
+                });
+
+                var statusStr = await statusResp.Content.ReadAsStringAsync();
+                using var sDoc = JsonDocument.Parse(statusStr);
+                var status = sDoc.RootElement.GetProperty("status").GetString();
+
+                if (status == "COMPLETED") break;
+                if (status != "IN_PROGRESS" && status != "IN_QUEUE")
+                    throw new InvalidOperationException($"Fal RMBG job failed: {status}");
+            }
+
+            var finalResp = await _httpClient.GetAsync(responseUrl);
+            var finalJson = await finalResp.Content.ReadAsStringAsync();
+            
+            if (!finalResp.IsSuccessStatusCode)
+            {
+                logger.LogError($"[FalApiService] Error downl. RMBG. Status: {finalResp.StatusCode}. Payload: {finalJson}");
+                throw new HttpRequestException($"Fal API error: {finalResp.StatusCode}");
+            }
+
+            using var fDoc = JsonDocument.Parse(finalJson);
+            
+            if (!fDoc.RootElement.TryGetProperty("image", out var imageElement) || 
+                !imageElement.TryGetProperty("url", out var urlElement))
+            {
+                logger.LogError($"[FalApiService] Invalid RMBG payload structure. Raw Payload: {finalJson}");
+                throw new InvalidOperationException("Failed to extract cutout image URL from response.");
+            }
+
+            var finalImageUrl = urlElement.GetString()!;
+            var bytes = await _httpClient.GetByteArrayAsync(finalImageUrl);
+            
+            success = true;
+            return bytes;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            throw;
+        }
+        finally
+        {
+            sw.Stop();
+            _telemetry.LogGenerationResult(jobId, "fal-ai/bria-rmbg", sw.ElapsedMilliseconds, success, error);
         }
     }
 }

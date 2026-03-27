@@ -8,5 +8,6 @@ public record SqsJobPayload(
     [property: JsonPropertyName("BannerId")]    string BannerId,
     [property: JsonPropertyName("ImageUrls")]    List<string> ImageUrls,
     [property: JsonPropertyName("ReferenceImageUrl")] string ReferenceImageUrl,
-    [property: JsonPropertyName("UserText")]    string UserText
+    [property: JsonPropertyName("UserText")]    string UserText,
+    [property: JsonPropertyName("RemoveBackground")] bool RemoveBackground = true
 );
