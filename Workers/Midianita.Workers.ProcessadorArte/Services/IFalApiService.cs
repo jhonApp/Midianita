@@ -8,4 +8,9 @@ public interface IFalApiService
         string masterPrompt, 
         ILambdaLogger logger,
         string jobId);
+
+    Task<byte[]> RemoveBackgroundAsync(
+        byte[] imageBytes,
+        ILambdaLogger logger,
+        string jobId);
 }
