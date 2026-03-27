@@ -77,9 +77,9 @@ public class Function
                     imageUrls.Add(GeneratePreSignedUrl(payload.ReferenceImageUrl));
                 }
 
-                // Pass JobId to Fal
+                // Pass JobId to Fal (Pure Text-To-Image for background)
                 var aiGeneratedBytes = await _falApi.GenerateImageAsync(
-                    imageUrls, banner.MasterPrompt, context.Logger, payload.JobId);
+                    banner.MasterPrompt, context.Logger, payload.JobId);
 
                 var finalImageBytes = await _imageComposer.ApplyTypographyAsync(
                     aiGeneratedBytes, banner, payload.UserText, context.Logger);
