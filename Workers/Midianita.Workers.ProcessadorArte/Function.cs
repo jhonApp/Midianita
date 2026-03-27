@@ -165,30 +165,15 @@ public class Function
 
     /// <summary>
     /// Downloads the person cutout from the INPUT assets bucket.
-    /// Handles both raw keys ("banners-admin/img.png") and absolute URLs.
+    /// Handles both raw keys, s3:// URIs, and HTTPS absolute URLs.
     /// </summary>
     private async Task<byte[]> DownloadPersonFromS3Async(string objectKeyOrUrl, ILambdaLogger logger)
     {
-        string bucket;
-        string objectKey;
+        var bucket = Environment.GetEnvironmentVariable("INPUT_S3_BUCKET")
+            ?? Environment.GetEnvironmentVariable("OUTPUT_S3_BUCKET")
+            ?? throw new InvalidOperationException("Neither 'INPUT_S3_BUCKET' nor 'OUTPUT_S3_BUCKET' is configured.");
 
-        // If it's a full S3 URL, extract bucket and key from it
-        if (Uri.TryCreate(objectKeyOrUrl, UriKind.Absolute, out var uri) &&
-            (uri.Scheme == "https" || uri.Scheme == "http") &&
-            uri.Host.Contains(".s3."))
-        {
-            var hostParts = uri.Host.Split('.');
-            bucket = hostParts[0];
-            objectKey = uri.AbsolutePath.TrimStart('/');
-        }
-        else
-        {
-            // It's a relative key — use the configured input bucket
-            bucket = Environment.GetEnvironmentVariable("INPUT_S3_BUCKET")
-                ?? Environment.GetEnvironmentVariable("OUTPUT_S3_BUCKET")
-                ?? throw new InvalidOperationException("Neither 'INPUT_S3_BUCKET' nor 'OUTPUT_S3_BUCKET' is configured.");
-            objectKey = objectKeyOrUrl;
-        }
+        var objectKey = ExtractS3Key(objectKeyOrUrl, bucket);
 
         logger.LogInformation($"[ProcessadorArte] ⬇️ S3 Download: bucket={bucket}, key={objectKey}");
 
@@ -201,5 +186,41 @@ public class Function
         using var ms = new MemoryStream();
         await response.ResponseStream.CopyToAsync(ms);
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Extracts the clean object key from any of these formats:
+    /// - URL HTTPS: https://midianita-dev-assets.s3.amazonaws.com/anexos/imagem.jpg
+    /// - S3 URI: s3://midianita-dev-assets/anexos/imagem.jpg
+    /// - Raw Key: anexos/imagem.jpg
+    /// </summary>
+    public static string ExtractS3Key(string input, string bucketName)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+
+        input = input.Trim();
+
+        if (Uri.TryCreate(input, UriKind.Absolute, out var uri))
+        {
+            // Cenário B: s3://midianita-dev-assets/anexos/imagem.jpg
+            if (uri.Scheme.Equals("s3", StringComparison.OrdinalIgnoreCase))
+            {
+                return uri.AbsolutePath.TrimStart('/');
+            }
+
+            // Cenário A: https://midianita-dev-assets.s3.amazonaws.com/anexos/imagem.jpg
+            if (uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) || 
+                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase))
+            {
+                if (uri.Host.Contains("amazonaws.com", StringComparison.OrdinalIgnoreCase) || 
+                    uri.Host.Contains(bucketName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return uri.AbsolutePath.TrimStart('/');
+                }
+            }
+        }
+
+        // Cenário C: Raw Key (anexos/imagem.jpg)
+        return input.TrimStart('/');
     }
 }
