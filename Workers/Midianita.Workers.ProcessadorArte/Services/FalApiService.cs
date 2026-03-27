@@ -11,7 +11,7 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 
 public sealed class FalApiService : IFalApiService
 {
-    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/fast-nano-banana";
+    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/nano-banana";
     private const string FalApiKeyEnv = "FAL_KEY";
 
     private readonly HttpClient _httpClient;
