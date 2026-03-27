@@ -11,7 +11,7 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 
 public sealed class FalApiService : IFalApiService
 {
-    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/nano-banana/edit";
+    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/flux/schnell";
     private const string FalApiKeyEnv = "FAL_KEY";
 
     private readonly HttpClient _httpClient;
@@ -30,7 +30,7 @@ public sealed class FalApiService : IFalApiService
             .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(1.5, retryAttempt)));
     }
 
-    public async Task<byte[]> GenerateImageAsync(List<string> imageUrls, string masterPrompt, ILambdaLogger logger, string jobId)
+    public async Task<byte[]> GenerateImageAsync(string masterPrompt, ILambdaLogger logger, string jobId)
     {
         var sw = Stopwatch.StartNew();
         bool success = false;
@@ -41,7 +41,12 @@ public sealed class FalApiService : IFalApiService
             var apiKey = Environment.GetEnvironmentVariable(FalApiKeyEnv)
                 ?? throw new InvalidOperationException($"Environment variable '{FalApiKeyEnv}' is not set.");
 
-            var requestBody = new { image_urls = imageUrls.ToArray(), prompt = masterPrompt };
+            var requestBody = new 
+            { 
+                prompt = masterPrompt,
+                image_size = "landscape_4_3", // Optimized for banners
+                num_images = 1
+            };
             // Serializamos o JSON uma única vez — reutilizá-lo é seguro pois é uma string imutável.
             var json = JsonSerializer.Serialize(requestBody);
 
@@ -127,7 +132,7 @@ public sealed class FalApiService : IFalApiService
         finally
         {
             sw.Stop();
-            _telemetry.LogGenerationResult(jobId, "fal-ai/nano-banana", sw.ElapsedMilliseconds, success, error);
+            _telemetry.LogGenerationResult(jobId, "fal-ai/flux/schnell", sw.ElapsedMilliseconds, success, error);
         }
     }
 }
