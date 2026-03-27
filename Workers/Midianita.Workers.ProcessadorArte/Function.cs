@@ -97,31 +97,31 @@ public class Function
                     $"[ProcessadorArte] ✅ Background generated: {backgroundBytes.Length} bytes");
 
                 // ═══════════════════════════════════════════════════════════
-                //  STEP 4 — Download person cutout from S3
+                //  STEP 4 — Download person cutout from S3 (USER IMAGE)
                 // ═══════════════════════════════════════════════════════════
                 byte[] personBytes = Array.Empty<byte>();
 
-                if (!string.IsNullOrWhiteSpace(banner.OriginalImageKey))
+                if (!string.IsNullOrWhiteSpace(payload.ReferenceImageUrl))
                 {
                     context.Logger.LogInformation(
-                        $"[ProcessadorArte] 👤 Downloading person cutout: {banner.OriginalImageKey}");
+                        $"[ProcessadorArte] 👤 Downloading USER person cutout: {payload.ReferenceImageUrl}");
 
                     try
                     {
-                        personBytes = await DownloadPersonFromS3Async(banner.OriginalImageKey, context.Logger);
+                        personBytes = await DownloadPersonFromS3Async(payload.ReferenceImageUrl, context.Logger);
 
                         context.Logger.LogInformation(
-                            $"[ProcessadorArte] ✅ Person downloaded: {personBytes.Length} bytes");
+                            $"[ProcessadorArte] ✅ User person cutout downloaded: {personBytes.Length} bytes");
                     }
                     catch (Exception ex)
                     {
                         context.Logger.LogWarning(
-                            $"[ProcessadorArte] ⚠️ Could not download person image: {ex.Message}. Proceeding without cutout.");
+                            $"[ProcessadorArte] ⚠️ Could not download user image: {ex.Message}. Proceeding without cutout.");
                     }
                 }
                 else
                 {
-                    context.Logger.LogInformation("[ProcessadorArte] ℹ️ No OriginalImageKey found. Rendering without person.");
+                    context.Logger.LogInformation("[ProcessadorArte] ℹ️ No ReferenceImageUrl in payload. Rendering without user cutout.");
                 }
 
                 // ═══════════════════════════════════════════════════════════
