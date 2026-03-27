@@ -89,4 +89,73 @@ public sealed class DynamoDbJobRepository : IDynamoDbJobRepository
 
         logger.LogInformation($"[DynamoDbJobRepository] ✅ Job {jobId} status updated to {status}");
     }
+
+    public async Task<BannerFullRecord> GetBannerFullRecordAsync(string bannerId, ILambdaLogger logger)
+    {
+        logger.LogInformation($"[DynamoDbJobRepository] 📦 Fetching full banner record for BannerId: {bannerId}");
+
+        var response = await _dynamo.GetItemAsync(new GetItemRequest
+        {
+            TableName = _bannerTable,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["BannerId"] = new AttributeValue { S = bannerId }
+            }
+        });
+
+        if (response.Item is null || response.Item.Count == 0)
+            throw new InvalidOperationException($"Banner '{bannerId}' not found in DynamoDB.");
+
+        var item = response.Item;
+
+        // ── MasterPrompt ──────────────────────────────────────────────────
+        var masterPrompt = item.TryGetValue("MasterPrompt", out var mpVal) ? mpVal.S : string.Empty;
+
+        // ── OriginalImageKey ──────────────────────────────────────────────
+        var originalImageKey = item.TryGetValue("OriginalImageKey", out var oikVal) ? oikVal.S : string.Empty;
+
+        // ── HasCutoutImages ───────────────────────────────────────────────
+        var hasCutout = item.TryGetValue("HasCutoutImages", out var hcVal) && hcVal.BOOL;
+
+        // ── LayoutRulesV2 (DynamoDB Map → JSON → record) ─────────────────
+        LayoutRulesV2? layoutV2 = null;
+        if (item.TryGetValue("LayoutRulesV2", out var v2Attr))
+        {
+            // If stored as a JSON string (S), deserialize directly
+            if (!string.IsNullOrEmpty(v2Attr.S))
+            {
+                layoutV2 = JsonSerializer.Deserialize<LayoutRulesV2>(v2Attr.S, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            // If stored as a DynamoDB Map (M), serialize the Document to JSON first
+            else if (v2Attr.M is { Count: > 0 })
+            {
+                var doc = Amazon.DynamoDBv2.DocumentModel.Document.FromAttributeMap(v2Attr.M);
+                layoutV2 = JsonSerializer.Deserialize<LayoutRulesV2>(doc.ToJson(),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+        }
+
+        // ── LayoutRules V1 (legacy fallback) ─────────────────────────────
+        LayoutRules? lr = null;
+        if (item.TryGetValue("LayoutRules", out var lrMap) && lrMap.M != null)
+        {
+            lr = new LayoutRules(
+                CutoutPlacement:       lrMap.M.TryGetValue("CutoutPlacement",       out var cpVal) ? cpVal.S : "",
+                CutoutScalePercentage: lrMap.M.TryGetValue("CutoutScalePercentage", out var spVal) && int.TryParse(spVal.N, out var scale) ? scale : 0,
+                TextPlacement:         lrMap.M.TryGetValue("TextPlacement",         out var tpVal) ? tpVal.S : "",
+                TextAlign:             lrMap.M.TryGetValue("TextAlign",             out var taVal) ? taVal.S : ""
+            );
+        }
+
+        logger.LogInformation($"[DynamoDbJobRepository] ✅ Full record fetched. HasV2: {layoutV2 is not null}, HasCutout: {hasCutout}");
+
+        return new BannerFullRecord(
+            MasterPrompt:    masterPrompt,
+            OriginalImageKey: originalImageKey,
+            LayoutRulesV2:   layoutV2,
+            LayoutRules:     lr,
+            HasCutoutImages: hasCutout
+        );
+    }
 }
