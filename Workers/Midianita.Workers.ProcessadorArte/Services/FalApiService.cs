@@ -11,7 +11,7 @@ namespace Midianita.Workers.ProcessadorArte.Services;
 
 public sealed class FalApiService : IFalApiService
 {
-    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/nano-banana";
+    private const string FalQueueUrl = "https://queue.fal.run/fal-ai/flux-1/dev";
     private const string FalRmbgQueueUrl = "https://queue.fal.run/fal-ai/birefnet";
     private const string FalApiKeyEnv = "FAL_KEY";
 
@@ -133,7 +133,7 @@ public sealed class FalApiService : IFalApiService
         finally
         {
             sw.Stop();
-            _telemetry.LogGenerationResult(jobId, "fal-ai/fast-nano-banana", sw.ElapsedMilliseconds, success, error);
+            _telemetry.LogGenerationResult(jobId, "fal-ai/flux-1/dev", sw.ElapsedMilliseconds, success, error);
         }
     }
 

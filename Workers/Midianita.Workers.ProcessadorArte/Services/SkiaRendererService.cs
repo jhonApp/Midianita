@@ -229,37 +229,71 @@ public sealed class SkiaRendererService : ISkiaRendererService
 
             float xPos = ResolveTextX(textAlign, canvasWidth);
 
-            // ── Drop shadow ────────────────────────────────────────────────
-            using var shadowPaint = new SKPaint
+            if (texto.Rotation != 0)
             {
-                IsAntialias = true,
-                Color       = new SKColor(0, 0, 0, ShadowAlpha),
-                TextSize    = texto.FontSize,
-                TextAlign   = textAlign,
-                Typeface    = typeface
-            };
+                canvas.Save();
+                canvas.Translate(xPos, texto.YPosition);
+                canvas.RotateDegrees(texto.Rotation);
 
-            canvas.DrawText(
-                texto.Tipo ?? string.Empty,
-                xPos + ShadowOffset,
-                texto.YPosition + ShadowOffset,
-                shadowPaint);
+                // ── Drop shadow ────────────────────────────────────────────────
+                using var shadowPaint = new SKPaint
+                {
+                    IsAntialias = true,
+                    Color       = new SKColor(0, 0, 0, ShadowAlpha),
+                    TextSize    = texto.FontSize,
+                    TextAlign   = textAlign,
+                    Typeface    = typeface
+                };
 
-            // ── Main text ──────────────────────────────────────────────────
-            using var mainPaint = new SKPaint
+                canvas.DrawText(texto.Tipo ?? string.Empty, ShadowOffset, ShadowOffset, shadowPaint);
+
+                // ── Main text ──────────────────────────────────────────────────
+                using var mainPaint = new SKPaint
+                {
+                    IsAntialias = true,
+                    Color       = color,
+                    TextSize    = texto.FontSize,
+                    TextAlign   = textAlign,
+                    Typeface    = typeface
+                };
+
+                canvas.DrawText(texto.Tipo ?? string.Empty, 0, 0, mainPaint);
+                canvas.Restore();
+            }
+            else
             {
-                IsAntialias = true,
-                Color       = color,
-                TextSize    = texto.FontSize,
-                TextAlign   = textAlign,
-                Typeface    = typeface
-            };
+                // ── Drop shadow ────────────────────────────────────────────────
+                using var shadowPaint = new SKPaint
+                {
+                    IsAntialias = true,
+                    Color       = new SKColor(0, 0, 0, ShadowAlpha),
+                    TextSize    = texto.FontSize,
+                    TextAlign   = textAlign,
+                    Typeface    = typeface
+                };
 
-            canvas.DrawText(
-                texto.Tipo ?? string.Empty,
-                xPos,
-                texto.YPosition,
-                mainPaint);
+                canvas.DrawText(
+                    texto.Tipo ?? string.Empty,
+                    xPos + ShadowOffset,
+                    texto.YPosition + ShadowOffset,
+                    shadowPaint);
+
+                // ── Main text ──────────────────────────────────────────────────
+                using var mainPaint = new SKPaint
+                {
+                    IsAntialias = true,
+                    Color       = color,
+                    TextSize    = texto.FontSize,
+                    TextAlign   = textAlign,
+                    Typeface    = typeface
+                };
+
+                canvas.DrawText(
+                    texto.Tipo ?? string.Empty,
+                    xPos,
+                    texto.YPosition,
+                    mainPaint);
+            }
         }
     }
 
