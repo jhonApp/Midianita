@@ -217,25 +217,21 @@ public sealed class SkiaRendererService : ISkiaRendererService
 
         foreach (var texto in textos)
         {
-            if (texto is null) continue;
-
-            var color     = ParseHexColor(texto.Color);
-            var textAlign = ResolveTextAlign(texto.Alignment);
-            var weight    = ResolveFontWeight(texto.FontWeight);
-
-            using var typeface = SKTypeface.FromFamilyName(
-                DefaultFontFamily, weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-                ?? SKTypeface.Default;
-
-            float xPos = ResolveTextX(textAlign, canvasWidth);
-
-            if (texto.Rotation != 0)
+            try
             {
-                canvas.Save();
-                canvas.Translate(xPos, texto.YPosition);
-                canvas.RotateDegrees(texto.Rotation);
+                if (texto is null) continue;
 
-                // ── Drop shadow ────────────────────────────────────────────────
+                var color     = ParseHexColor(texto.Color);
+                var textAlign = ResolveTextAlign(texto.Alignment);
+                var weight    = ResolveFontWeight(texto.FontWeight);
+
+                using var typeface = SKTypeface.FromFamilyName(
+                    DefaultFontFamily, weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
+                    ?? SKTypeface.Default;
+
+                float xPos = ResolveTextX(textAlign, canvasWidth);
+                string textContent = texto.Tipo ?? string.Empty;
+
                 using var shadowPaint = new SKPaint
                 {
                     IsAntialias = true,
@@ -245,9 +241,6 @@ public sealed class SkiaRendererService : ISkiaRendererService
                     Typeface    = typeface
                 };
 
-                canvas.DrawText(texto.Tipo ?? string.Empty, ShadowOffset, ShadowOffset, shadowPaint);
-
-                // ── Main text ──────────────────────────────────────────────────
                 using var mainPaint = new SKPaint
                 {
                     IsAntialias = true,
@@ -257,42 +250,34 @@ public sealed class SkiaRendererService : ISkiaRendererService
                     Typeface    = typeface
                 };
 
-                canvas.DrawText(texto.Tipo ?? string.Empty, 0, 0, mainPaint);
-                canvas.Restore();
+                if (texto.Rotation != 0)
+                {
+                    canvas.Save();
+                    
+                    // Como os eixos da matriz se alteram, nós garantimos a medida do texto
+                    float textWidth = mainPaint.MeasureText(textContent);
+                    float textHeight = mainPaint.FontMetrics.Descent - mainPaint.FontMetrics.Ascent;
+
+                    // O Translate foca estritamente na coordenada X e Y da âncora do designer.
+                    canvas.Translate(xPos, texto.YPosition);
+                    canvas.RotateDegrees(texto.Rotation);
+
+                    // Desenhamos na origem local daquele eixo rotacionado (0,0)
+                    canvas.DrawText(textContent, ShadowOffset, ShadowOffset, shadowPaint);
+                    canvas.DrawText(textContent, 0, 0, mainPaint);
+                    
+                    canvas.Restore();
+                }
+                else
+                {
+                    canvas.DrawText(textContent, xPos + ShadowOffset, texto.YPosition + ShadowOffset, shadowPaint);
+                    canvas.DrawText(textContent, xPos, texto.YPosition, mainPaint);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                // ── Drop shadow ────────────────────────────────────────────────
-                using var shadowPaint = new SKPaint
-                {
-                    IsAntialias = true,
-                    Color       = new SKColor(0, 0, 0, ShadowAlpha),
-                    TextSize    = texto.FontSize,
-                    TextAlign   = textAlign,
-                    Typeface    = typeface
-                };
-
-                canvas.DrawText(
-                    texto.Tipo ?? string.Empty,
-                    xPos + ShadowOffset,
-                    texto.YPosition + ShadowOffset,
-                    shadowPaint);
-
-                // ── Main text ──────────────────────────────────────────────────
-                using var mainPaint = new SKPaint
-                {
-                    IsAntialias = true,
-                    Color       = color,
-                    TextSize    = texto.FontSize,
-                    TextAlign   = textAlign,
-                    Typeface    = typeface
-                };
-
-                canvas.DrawText(
-                    texto.Tipo ?? string.Empty,
-                    xPos,
-                    texto.YPosition,
-                    mainPaint);
+                Console.WriteLine($"[SkiaRendererService] Falha matemática/renderização ao desenhar o texto (Tipo: {texto?.Tipo}): {ex.Message}");
+                // Falha suave: ignora este texto e continua para o próximo para não quebrar todo o banner.
             }
         }
     }
