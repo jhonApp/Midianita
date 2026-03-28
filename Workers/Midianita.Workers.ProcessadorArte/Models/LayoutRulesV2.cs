@@ -58,5 +58,8 @@ public record TextElement(
     [property: JsonPropertyName("fontWeight")] string FontWeight,
 
     /// <summary>Text alignment: "left", "center", "right".</summary>
-    [property: JsonPropertyName("alignment")] string Alignment
+    [property: JsonPropertyName("alignment")] string Alignment,
+
+    /// <summary>Rotation in degrees, e.g. -90, 0, 90.</summary>
+    [property: JsonPropertyName("rotation")] int Rotation = 0
 );
