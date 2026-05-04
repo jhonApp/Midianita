@@ -159,7 +159,7 @@ public class Function
             //  A IA é responsável por: composição de cenas, posicionamento,
             //  iluminação, sombras, tipografia e renderização dos textos.
             // ═══════════════════════════════════════════════════════════════════
-            var compositePrompt = BuildCompositePrompt(banner.LayoutRulesV2, payload.UserText, logger);
+            var compositePrompt = BuildCompositePrompt(banner.LayoutRulesV2, banner.MasterPrompt, payload.UserText, logger);
 
             logger.LogInformation(
                 $"[ProcessadorArte] 📝 Prompt composto ({compositePrompt.Length} chars):\n{compositePrompt}");
@@ -227,13 +227,19 @@ public class Function
     /// no payload multipart. As descrições aqui servirão como fallback/contexto.
     /// </summary>
     private static string BuildCompositePrompt(
-        LayoutRulesV2 layout, string? userText, ILambdaLogger logger)
+        LayoutRulesV2 layout, string masterPrompt, string? userText, ILambdaLogger logger)
     {
         var sb = new StringBuilder();
 
         // ── Seção 1: Cenário e estilo visual ──────────────────────────────────
+        // Usa o masterPrompt validado do banner (top-level) como fallback caso
+        // layout.MasterPrompt seja null (registros antigos no DynamoDB com schema Skia).
+        var scenarioPrompt = !string.IsNullOrWhiteSpace(layout.MasterPrompt)
+            ? layout.MasterPrompt.Trim()
+            : masterPrompt.Trim();
+
         sb.AppendLine("=== CENÁRIO E ESTILO ===");
-        sb.AppendLine(layout.MasterPrompt.Trim());
+        sb.AppendLine(scenarioPrompt);
 
         if (!string.IsNullOrWhiteSpace(layout.EstiloGeral))
         {
@@ -246,9 +252,17 @@ public class Function
         if (layout.Pessoa is not null)
         {
             sb.AppendLine("=== PESSOA / RECORTE ===");
+
+            // Null-safe: SizeDescription pode ser null em registros antigos (schema Skia)
+            var sizeDesc = string.IsNullOrWhiteSpace(layout.Pessoa.SizeDescription)
+                ? "ocupa a maior parte da altura do banner"
+                : layout.Pessoa.SizeDescription;
+
+            var anchor = layout.Pessoa.Anchor ?? "bottom-center";
+
             sb.AppendLine(
-                $"Posicione a pessoa na imagem: âncora '{layout.Pessoa.Anchor}'. " +
-                $"Tamanho: {layout.Pessoa.SizeDescription}.");
+                $"Posicione a pessoa na imagem: âncora '{anchor}'. " +
+                $"Tamanho: {sizeDesc}.");
 
             if (!string.IsNullOrWhiteSpace(layout.Pessoa.IntegrationNotes))
             {
