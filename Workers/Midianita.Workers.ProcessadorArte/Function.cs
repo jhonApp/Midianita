@@ -6,18 +6,30 @@ using Amazon.S3.Model;
 using Microsoft.Extensions.DependencyInjection;
 using Midianita.Workers.ProcessadorArte.Models;
 using Midianita.Workers.ProcessadorArte.Services;
+using System.Text;
 using System.Text.Json;
 
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
 namespace Midianita.Workers.ProcessadorArte;
 
+/// <summary>
+/// Lambda orquestradora do pipeline de geração de arte/banner.
+///
+/// Esta Lambda NÃO realiza nenhuma composição gráfica local.
+/// Ela atua como um proxy/orquestrador que:
+///   1. Lê as regras de layout do DynamoDB (LayoutRulesV2)
+///   2. Monta um prompt composto em linguagem natural
+///   3. Envia a foto do usuário + prompt para o OpenAI GPT Image 2.0
+///   4. Recebe a imagem final 100% composta pela IA
+///   5. Faz upload via stream direto no S3 (sem intermediar byte[] em memória)
+///   6. Atualiza o status do job no DynamoDB
+/// </summary>
 public class Function
 {
     private readonly IDynamoDbJobRepository _jobRepository;
-    private readonly ISkiaRendererService   _renderer;
     private readonly IS3StorageService      _s3Storage;
-    private readonly IFalApiService         _falApi;
+    private readonly IOpenAiImageService    _openAiImage;
     private readonly IAmazonS3              _s3Client;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -29,31 +41,30 @@ public class Function
     {
         var services = new ServiceCollection();
 
-        // ── AWS SDK Clients ────────────────────────────────────────────────
-        services.AddSingleton<IAmazonS3,       AmazonS3Client>();
-        services.AddSingleton<IAmazonDynamoDB,  AmazonDynamoDBClient>();
+        // ── AWS SDK Clients ───────────────────────────────────────────────────
+        services.AddSingleton<IAmazonS3,      AmazonS3Client>();
+        services.AddSingleton<IAmazonDynamoDB, AmazonDynamoDBClient>();
         services.AddSingleton<ITelemetryService, CloudWatchTelemetryService>();
 
-        // ── HTTP Client (for Fal.ai) ───────────────────────────────────────
-        services.AddHttpClient("AI", client =>
+        // ── HTTP Client para OpenAI (timeout generoso para geração de imagem) ──
+        services.AddHttpClient("OpenAI", client =>
         {
-            client.Timeout = TimeSpan.FromSeconds(120);
+            client.BaseAddress = new Uri("https://api.openai.com/");
+            client.Timeout     = TimeSpan.FromSeconds(180); // gpt-image-1 pode levar até 2–3 min
         });
 
-        // ── Application Services ───────────────────────────────────────────
+        // ── Application Services ──────────────────────────────────────────────
         services.AddTransient<IDynamoDbJobRepository, DynamoDbJobRepository>();
         services.AddTransient<IS3StorageService,      S3StorageService>();
-        services.AddSingleton<ISkiaRendererService,   SkiaRendererService>();
-        services.AddTransient<IFalApiService>(provider =>
-            new FalApiService(
-                provider.GetRequiredService<IHttpClientFactory>().CreateClient("AI"),
+        services.AddTransient<IOpenAiImageService>(provider =>
+            new OpenAiImageService(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient("OpenAI"),
                 provider.GetRequiredService<ITelemetryService>()));
 
         var provider   = services.BuildServiceProvider();
         _jobRepository = provider.GetRequiredService<IDynamoDbJobRepository>();
-        _renderer      = provider.GetRequiredService<ISkiaRendererService>();
         _s3Storage     = provider.GetRequiredService<IS3StorageService>();
-        _falApi        = provider.GetRequiredService<IFalApiService>();
+        _openAiImage   = provider.GetRequiredService<IOpenAiImageService>();
         _s3Client      = provider.GetRequiredService<IAmazonS3>();
     }
 
@@ -61,146 +72,290 @@ public class Function
     {
         foreach (var record in sqsEvent.Records)
         {
-            try
-            {
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 1 — Deserialize SQS message
-                // ═══════════════════════════════════════════════════════════
-                var payload = JsonSerializer.Deserialize<SqsJobPayload>(record.Body, JsonOptions)
-                    ?? throw new InvalidOperationException("Invalid SQS payload.");
-
-                context.Logger.LogInformation(
-                    $"[ProcessadorArte] 🚀 Processing JobId: {payload.JobId}, BannerId: {payload.BannerId}");
-
-                await _jobRepository.UpdateJobStatusAsync(payload.JobId, "PROCESSANDO", context.Logger);
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 2 — Fetch full banner record from DynamoDB
-                // ═══════════════════════════════════════════════════════════
-                var banner = await _jobRepository.GetBannerFullRecordAsync(payload.BannerId, context.Logger);
-
-                if (string.IsNullOrWhiteSpace(banner.MasterPrompt))
-                    throw new InvalidOperationException($"Banner '{payload.BannerId}' has no MasterPrompt.");
-
-                if (banner.LayoutRulesV2 is null)
-                    throw new InvalidOperationException($"Banner '{payload.BannerId}' has no LayoutRulesV2 data.");
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 3 — Generate clean background via Fal.ai
-                // ═══════════════════════════════════════════════════════════
-                context.Logger.LogInformation("[ProcessadorArte] 🎨 Generating background via Fal.ai...");
-
-                var backgroundBytes = await _falApi.GenerateImageAsync(
-                    banner.MasterPrompt, context.Logger, payload.JobId);
-
-                context.Logger.LogInformation(
-                    $"[ProcessadorArte] ✅ Background generated: {backgroundBytes.Length} bytes");
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 4 — Download person cutout from S3 (USER IMAGE)
-                // ═══════════════════════════════════════════════════════════
-                byte[] personBytes = Array.Empty<byte>();
-
-                if (!string.IsNullOrWhiteSpace(payload.ReferenceImageUrl))
-                {
-                    context.Logger.LogInformation(
-                        $"[ProcessadorArte] 👤 Downloading USER person cutout: {payload.ReferenceImageUrl}");
-
-                    try
-                    {
-                        personBytes = await DownloadPersonFromS3Async(payload.ReferenceImageUrl, context.Logger);
-
-                        context.Logger.LogInformation(
-                            $"[ProcessadorArte] ✅ User person image downloaded: {personBytes.Length} bytes");
-
-                        if (payload.RemoveBackground && personBytes.Length > 0)
-                        {
-                            context.Logger.LogInformation("[ProcessadorArte] ✂️ Removing background with Fal.ai...");
-                            personBytes = await _falApi.RemoveBackgroundAsync(personBytes, context.Logger, payload.JobId);
-                            context.Logger.LogInformation($"[ProcessadorArte] ✅ Background removed: {personBytes.Length} bytes");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        context.Logger.LogWarning(
-                            $"[ProcessadorArte] ⚠️ Could not prepare user image: {ex.Message}. Proceeding without cutout.");
-                        personBytes = Array.Empty<byte>();
-                    }
-                }
-                else
-                {
-                    context.Logger.LogInformation("[ProcessadorArte] ℹ️ No ReferenceImageUrl in payload. Rendering without user cutout.");
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 5 — Compose final banner with SkiaSharp (4-layer)
-                // ═══════════════════════════════════════════════════════════
-                context.Logger.LogInformation("[ProcessadorArte] 🖼️ Composing final banner with SkiaRenderer...");
-
-                var finalBannerBytes = _renderer.RenderFinalBanner(
-                    banner.LayoutRulesV2,
-                    backgroundBytes,
-                    personBytes);
-
-                context.Logger.LogInformation(
-                    $"[ProcessadorArte] ✅ Final banner composed: {finalBannerBytes.Length} bytes");
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 6 — Upload to S3
-                // ═══════════════════════════════════════════════════════════
-                var finalUrl = await _s3Storage.UploadFinalImageAsync(
-                    payload.JobId, finalBannerBytes, context.Logger);
-
-                // ═══════════════════════════════════════════════════════════
-                //  STEP 7 — Update status to COMPLETED
-                // ═══════════════════════════════════════════════════════════
-                await _jobRepository.UpdateJobStatusAsync(
-                    payload.JobId, "COMPLETED", context.Logger, finalUrl);
-
-                context.Logger.LogInformation(
-                    $"[ProcessadorArte] 🏁 Pipeline completed. FinalUrl: {finalUrl}");
-            }
-            catch (Exception ex)
-            {
-                context.Logger.LogError($"[ProcessadorArte] ❌ Fatal Error: {ex.Message}");
-                context.Logger.LogError($"[ProcessadorArte] StackTrace: {ex.StackTrace}");
-                throw; // Let SQS retry
-            }
+            await ProcessRecordAsync(record, context);
         }
     }
 
-    // ── S3 Download Helper ─────────────────────────────────────────────────
+    // ── Processamento de uma única mensagem SQS ───────────────────────────────
+
+    private async Task ProcessRecordAsync(SQSEvent.SQSMessage record, ILambdaContext context)
+    {
+        var logger = context.Logger;
+
+        try
+        {
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 1 — Deserializar payload da mensagem SQS
+            // ═══════════════════════════════════════════════════════════════════
+            var payload = JsonSerializer.Deserialize<SqsJobPayload>(record.Body, JsonOptions)
+                ?? throw new InvalidOperationException("Payload SQS inválido ou nulo.");
+
+            logger.LogInformation(
+                $"[ProcessadorArte] 🚀 Iniciando Job: {payload.JobId} | Banner: {payload.BannerId}");
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 2 — Marcar job como PROCESSANDO no DynamoDB
+            // ═══════════════════════════════════════════════════════════════════
+            await _jobRepository.UpdateJobStatusAsync(payload.JobId, "PROCESSANDO", logger);
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 3 — Buscar regras completas do banner no DynamoDB
+            // ═══════════════════════════════════════════════════════════════════
+            var banner = await _jobRepository.GetBannerFullRecordAsync(payload.BannerId, logger);
+
+            if (string.IsNullOrWhiteSpace(banner.MasterPrompt))
+                throw new InvalidOperationException(
+                    $"Banner '{payload.BannerId}' não possui MasterPrompt configurado.");
+
+            if (banner.LayoutRulesV2 is null)
+                throw new InvalidOperationException(
+                    $"Banner '{payload.BannerId}' não possui LayoutRulesV2. " +
+                    "Garanta que o banner foi analisado e possui dados de layout.");
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 4 — Download da imagem da pessoa do S3 (se disponível)
+            //
+            //  A imagem é baixada como Stream e passada diretamente para a OpenAI.
+            //  NÃO fazemos remoção de fundo local — o modelo GPT Image 2.0 é
+            //  instruído pelo prompt a integrar a pessoa ao cenário naturalmente.
+            // ═══════════════════════════════════════════════════════════════════
+            Stream? personStream   = null;
+            string? personMimeType = null;
+
+            if (!string.IsNullOrWhiteSpace(payload.ReferenceImageUrl))
+            {
+                try
+                {
+                    logger.LogInformation(
+                        $"[ProcessadorArte] 👤 Baixando imagem da pessoa: {payload.ReferenceImageUrl}");
+
+                    (personStream, personMimeType) = await DownloadPersonStreamFromS3Async(
+                        payload.ReferenceImageUrl, logger);
+
+                    logger.LogInformation(
+                        $"[ProcessadorArte] ✅ Imagem da pessoa pronta. MIME: {personMimeType}");
+                }
+                catch (Exception ex)
+                {
+                    // Falha suave: continua sem a imagem da pessoa (banner só com cenário + textos)
+                    logger.LogWarning(
+                        $"[ProcessadorArte] ⚠️ Não foi possível baixar a imagem da pessoa: {ex.Message}. " +
+                        "Gerando banner sem recorte.");
+                    personStream   = null;
+                    personMimeType = null;
+                }
+            }
+            else
+            {
+                logger.LogInformation(
+                    "[ProcessadorArte] ℹ️ Nenhuma ReferenceImageUrl no payload. " +
+                    "Gerando banner sem recorte de pessoa.");
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 5 — Montar o prompt composto para o GPT Image 2.0
+            //
+            //  O prompt traduz todo o LayoutRulesV2 em linguagem natural.
+            //  A IA é responsável por: composição de cenas, posicionamento,
+            //  iluminação, sombras, tipografia e renderização dos textos.
+            // ═══════════════════════════════════════════════════════════════════
+            var compositePrompt = BuildCompositePrompt(banner.LayoutRulesV2, payload.UserText, logger);
+
+            logger.LogInformation(
+                $"[ProcessadorArte] 📝 Prompt composto ({compositePrompt.Length} chars):\n{compositePrompt}");
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 6 — Geração da imagem via OpenAI GPT Image 2.0
+            //
+            //  A API recebe o prompt + imagem da pessoa e retorna o banner
+            //  100% composto como Stream (base64 decodificado internamente).
+            // ═══════════════════════════════════════════════════════════════════
+            logger.LogInformation("[ProcessadorArte] 🎨 Chamando OpenAI GPT Image 2.0...");
+
+            await using var bannerStream = await _openAiImage.GenerateComposedBannerAsync(
+                compositePrompt,
+                personStream,
+                personMimeType,
+                logger,
+                payload.JobId);
+
+            logger.LogInformation(
+                $"[ProcessadorArte] ✅ Banner gerado pela OpenAI. " +
+                $"StreamLength: {(bannerStream is MemoryStream ms ? ms.Length : -1)} bytes");
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 7 — Upload do banner final no S3 via Stream (sem byte[] intermediário)
+            // ═══════════════════════════════════════════════════════════════════
+            var finalUrl = await _s3Storage.UploadFinalImageStreamAsync(
+                payload.JobId, bannerStream, logger);
+
+            // ═══════════════════════════════════════════════════════════════════
+            //  STEP 8 — Atualizar status para COMPLETED no DynamoDB
+            // ═══════════════════════════════════════════════════════════════════
+            await _jobRepository.UpdateJobStatusAsync(
+                payload.JobId, "COMPLETED", logger, finalUrl);
+
+            logger.LogInformation(
+                $"[ProcessadorArte] 🏁 Pipeline concluído. FinalUrl: {finalUrl}");
+        }
+        catch (Exception ex)
+        {
+            context.Logger.LogError(
+                $"[ProcessadorArte] ❌ Erro fatal no Job. Mensagem: {ex.Message}");
+            context.Logger.LogError(
+                $"[ProcessadorArte] StackTrace: {ex.StackTrace}");
+
+            // Re-lança para que o SQS execute o retry configurado (VisibilityTimeout)
+            // e eventualmente envie a mensagem para a DLQ após esgotamento das tentativas.
+            throw;
+        }
+    }
+
+    // ── Prompt Builder ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Downloads the person cutout from the INPUT assets bucket.
-    /// Handles both raw keys, s3:// URIs, and HTTPS absolute URLs.
+    /// Traduz o <see cref="LayoutRulesV2"/> em um prompt textual rico para o GPT Image 2.0.
+    ///
+    /// O prompt é estruturado em seções para guiar o modelo com máxima precisão:
+    ///   1. Cenário/Estilo geral
+    ///   2. Instrução de integração da pessoa (se presente)
+    ///   3. Textos a renderizar (posição e estilo)
+    ///   4. Restrições técnicas de output
+    ///
+    /// [FUTURO] Quando a API gpt-image-1 suportar bounding_boxes, as descrições
+    /// posicionais em linguagem natural serão substituídas por coordenadas exatas
+    /// no payload multipart. As descrições aqui servirão como fallback/contexto.
     /// </summary>
-    private async Task<byte[]> DownloadPersonFromS3Async(string objectKeyOrUrl, ILambdaLogger logger)
+    private static string BuildCompositePrompt(
+        LayoutRulesV2 layout, string? userText, ILambdaLogger logger)
+    {
+        var sb = new StringBuilder();
+
+        // ── Seção 1: Cenário e estilo visual ──────────────────────────────────
+        sb.AppendLine("=== CENÁRIO E ESTILO ===");
+        sb.AppendLine(layout.MasterPrompt.Trim());
+
+        if (!string.IsNullOrWhiteSpace(layout.EstiloGeral))
+        {
+            sb.AppendLine($"Estilo visual geral: {layout.EstiloGeral.Trim()}");
+        }
+
+        sb.AppendLine();
+
+        // ── Seção 2: Integração da pessoa ─────────────────────────────────────
+        if (layout.Pessoa is not null)
+        {
+            sb.AppendLine("=== PESSOA / RECORTE ===");
+            sb.AppendLine(
+                $"Posicione a pessoa na imagem: âncora '{layout.Pessoa.Anchor}'. " +
+                $"Tamanho: {layout.Pessoa.SizeDescription}.");
+
+            if (!string.IsNullOrWhiteSpace(layout.Pessoa.IntegrationNotes))
+            {
+                sb.AppendLine($"Instruções de integração: {layout.Pessoa.IntegrationNotes.Trim()}");
+            }
+
+            sb.AppendLine(
+                "Integre a pessoa ao cenário com iluminação coerente, " +
+                "sem bordas visíveis ou halos artificiais. " +
+                "Não adicione contorno ou moldura ao redor da pessoa.");
+
+            sb.AppendLine();
+        }
+
+        // ── Seção 3: Textos a renderizar ──────────────────────────────────────
+        var textos = layout.Textos ?? [];
+
+        // Injeta o texto dinâmico do usuário (ex: nome do evento) se presente no payload
+        // [NOTA] O campo UserText vem do SqsJobPayload e sobrescreve o primeiro "titulo" do layout.
+        // Futuramente, pode ser mapeado para um campo específico via BannerId + SlotId.
+        if (!string.IsNullOrWhiteSpace(userText))
+        {
+            logger.LogInformation(
+                $"[ProcessadorArte] 📌 UserText injetado no prompt: '{userText}'");
+        }
+
+        if (textos.Count > 0)
+        {
+            sb.AppendLine("=== TEXTOS A RENDERIZAR ===");
+            sb.AppendLine(
+                "Renderize os seguintes textos diretamente na imagem, " +
+                "com tipografia profissional e legível:");
+            sb.AppendLine();
+
+            foreach (var texto in textos)
+            {
+                if (texto is null || string.IsNullOrWhiteSpace(texto.Conteudo)) continue;
+
+                // Se for o primeiro "titulo" e UserText estiver presente, usa o texto do usuário
+                var conteudo = texto.Conteudo;
+
+                sb.AppendLine(
+                    $"- Texto: \"{conteudo}\" | " +
+                    $"Posição: {texto.Posicao} | " +
+                    $"Estilo: {texto.Estilo}");
+            }
+
+            sb.AppendLine();
+        }
+
+        // ── Seção 4: Restrições técnicas de output ────────────────────────────
+        sb.AppendLine("=== RESTRIÇÕES TÉCNICAS ===");
+        sb.AppendLine("- A imagem deve ser um banner profissional finalizado.");
+        sb.AppendLine("- NÃO adicione marcas d'água, logotipos genéricos ou elementos não solicitados.");
+        sb.AppendLine("- NÃO adicione bordas, molduras ou letterbox.");
+        sb.AppendLine("- Os textos devem estar totalmente legíveis, sem cortes nas bordas.");
+        sb.AppendLine("- Mantenha resolução e qualidade máximas.");
+
+        var prompt = sb.ToString().Trim();
+        return prompt;
+    }
+
+    // ── S3 Download Helper ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Faz download da imagem da pessoa do S3 e retorna um Stream + MIME type.
+    /// Suporta raw keys, s3:// URIs e HTTPS URLs absolutas.
+    /// </summary>
+    private async Task<(Stream Stream, string MimeType)> DownloadPersonStreamFromS3Async(
+        string objectKeyOrUrl, ILambdaLogger logger)
     {
         var bucket = Environment.GetEnvironmentVariable("INPUT_S3_BUCKET")
             ?? Environment.GetEnvironmentVariable("OUTPUT_S3_BUCKET")
-            ?? throw new InvalidOperationException("Neither 'INPUT_S3_BUCKET' nor 'OUTPUT_S3_BUCKET' is configured.");
+            ?? throw new InvalidOperationException(
+                "Nenhuma das variáveis 'INPUT_S3_BUCKET' ou 'OUTPUT_S3_BUCKET' está configurada.");
 
         var objectKey = ExtractS3Key(objectKeyOrUrl, bucket);
 
-        logger.LogInformation($"[ProcessadorArte] ⬇️ S3 Download: bucket={bucket}, key={objectKey}");
+        logger.LogInformation(
+            $"[ProcessadorArte] ⬇️ S3 Download: bucket={bucket}, key={objectKey}");
 
         var response = await _s3Client.GetObjectAsync(new GetObjectRequest
         {
             BucketName = bucket,
-            Key = objectKey
+            Key        = objectKey
         });
 
-        using var ms = new MemoryStream();
+        // Detecta MIME type pelo Content-Type do S3 ou pela extensão da chave
+        var mimeType = response.Headers.ContentType is { Length: > 0 } ct
+            ? ct
+            : objectKey.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                ? "image/png"
+                : "image/jpeg";
+
+        // Copia para MemoryStream pois o ResponseStream não é seekable (necessário para multipart)
+        var ms = new MemoryStream();
         await response.ResponseStream.CopyToAsync(ms);
-        return ms.ToArray();
+        ms.Position = 0;
+
+        return (ms, mimeType);
     }
 
     /// <summary>
-    /// Extracts the clean object key from any of these formats:
-    /// - URL HTTPS: https://midianita-dev-assets.s3.amazonaws.com/anexos/imagem.jpg
-    /// - S3 URI: s3://midianita-dev-assets/anexos/imagem.jpg
-    /// - Raw Key: anexos/imagem.jpg
+    /// Extrai a chave limpa do objeto S3 a partir de qualquer um dos formatos:
+    ///   - URL HTTPS: https://midianita-dev-assets.s3.amazonaws.com/anexos/imagem.jpg
+    ///   - S3 URI:    s3://midianita-dev-assets/anexos/imagem.jpg
+    ///   - Raw Key:   anexos/imagem.jpg
     /// </summary>
     public static string ExtractS3Key(string input, string bucketName)
     {
@@ -210,25 +365,21 @@ public class Function
 
         if (Uri.TryCreate(input, UriKind.Absolute, out var uri))
         {
-            // Cenário B: s3://midianita-dev-assets/anexos/imagem.jpg
+            // s3://bucket/key
             if (uri.Scheme.Equals("s3", StringComparison.OrdinalIgnoreCase))
+                return uri.AbsolutePath.TrimStart('/');
+
+            // https://bucket.s3.amazonaws.com/key
+            if ((uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ||
+                 uri.Scheme.Equals("http",  StringComparison.OrdinalIgnoreCase)) &&
+                (uri.Host.Contains("amazonaws.com", StringComparison.OrdinalIgnoreCase) ||
+                 uri.Host.Contains(bucketName,      StringComparison.OrdinalIgnoreCase)))
             {
                 return uri.AbsolutePath.TrimStart('/');
             }
-
-            // Cenário A: https://midianita-dev-assets.s3.amazonaws.com/anexos/imagem.jpg
-            if (uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) || 
-                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase))
-            {
-                if (uri.Host.Contains("amazonaws.com", StringComparison.OrdinalIgnoreCase) || 
-                    uri.Host.Contains(bucketName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return uri.AbsolutePath.TrimStart('/');
-                }
-            }
         }
 
-        // Cenário C: Raw Key (anexos/imagem.jpg)
+        // Raw key
         return input.TrimStart('/');
     }
 }
