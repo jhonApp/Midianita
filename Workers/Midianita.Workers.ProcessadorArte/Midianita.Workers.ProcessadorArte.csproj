@@ -24,12 +24,6 @@
     <!-- Microsoft Extensions for DI / HTTP -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
-    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
-
-    <!-- Imaging / Typography (SkiaSharp) -->
-    <PackageReference Include="SkiaSharp" Version="2.88.8" />
-    <!-- Native binaries for the Lambda Linux x64 environment -->
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.8" />
   </ItemGroup>
 
 </Project>
